@@ -1,0 +1,19 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Secrets — must never be committed even by accident.
+# (No skill file legitimately needs any of these.)
+*.env
+.env.*
+*.key
+*.pem
+*credentials*.json
+*service-account*.json
+*secret*
