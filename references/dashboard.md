@@ -62,13 +62,69 @@ scripts/
 ### Vertical config (`src/config/verticals/<vertical>.ts`)
 
 Single file per vertical. Defines:
-- Intent vocabulary (e.g., for real-estate: `ventas`, `alquileres`, `tasaciones`, `emprendimientos`, `admin`, `otras`)
+- Intent vocabulary (e.g., for real-estate: `ventas`, `alquileres`, `tasaciones`, `emprendimientos`, `admin`, `otras`; for architecture: `proyecto_lead`, `construccion_lead`, `gestiones_lead`, `desarrollo_lead`, `proveedor_intake`, `mano_obra_intake`)
 - Terminal flows (which intents end in handoff vs continue)
 - Per-intent chart colors (hardcoded hex — these are domain-meaning colors, NOT brand colors)
+- Handoff target labels (`escalations.handoff_target` substring → human label)
 - Attribution modes (last-touch / first-touch / any-touch)
 - Locale-specific labels for the UI
+- **Feature flags** — see below
 
-`VERTICAL=<key>` env var picks which file to load. Adding a new vertical = one new file (~1 hour). v1 ships `real-estate.ts`.
+`VERTICAL=<key>` env var picks which file to load. Adding a new vertical = one new file (~1 hour). Shipped verticals: `real-estate` (client1, since v1), `architecture` (Plec, since 2026-05-19).
+
+### `verticalConfig.features` — the "business type" mechanism
+
+Each vertical declares its capabilities via an optional `features` object. The dashboard renders feature-gated UI only when the flag is truthy. Default for any vertical with no `features` key = "no extra features" (same as real-estate today).
+
+```ts
+export type VerticalFeatures = {
+  providersTab?: boolean;   // /providers route + sidebar item, queries automation.v_providers
+  laborPoolTab?: boolean;   // /labor-pool route + sidebar item, queries automation.v_labor_pool
+};
+```
+
+Current declarations:
+
+| Vertical | features |
+|---|---|
+| `real-estate` | (omitted — no extra features) |
+| `architecture` | `{ providersTab: true, laborPoolTab: true }` |
+| `services` (future) | `{ laborPoolTab: true }` only — no formal supplier directory |
+
+When adding a new feature flag:
+
+1. Add the boolean to `VerticalFeatures` in `src/config/verticals/_types.ts`
+2. Read it in `app/(dashboard)/layout.tsx` (sidebar) to add a nav item conditionally
+3. Add a new icon key to `NavIconKey` + `ICON_MAP` in `Sidebar.tsx` and `MobileNav.tsx`
+4. Defense-in-depth: every gated page calls `if (!verticalConfig().features?.flag) notFound()` early; same in the corresponding `/api/export/...` route
+5. Each vertical's `<vertical>.ts` opts in or out
+
+**Why a flat features object instead of a `businessType` enum:** verticals self-describe their capabilities, no central mapping to maintain. A future vertical that needs an unusual combination doesn't require a new enum value.
+
+### Sidebar / route guards
+
+Routes that depend on features (`/providers`, `/labor-pool` today; more to come) follow this pattern:
+
+```ts
+// app/(dashboard)/providers/page.tsx
+import { notFound } from "next/navigation";
+import { verticalConfig } from "@/config/verticals";
+
+export default async function ProvidersPage(/* ... */) {
+  if (!verticalConfig().features?.providersTab) {
+    notFound();
+  }
+  // ...
+}
+```
+
+Sidebar in `app/(dashboard)/layout.tsx` assembles the nav list by composing:
+
+```
+base nav (always, from vertical.nav)
+  + featureItems   (conditionally appended per vertical.features)
+  + SETTINGS_NAV_ITEM   (only if sessionRole.role === "admin")
+```
 
 ### Tenant config (`src/config/tenant.ts`)
 

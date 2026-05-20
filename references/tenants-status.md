@@ -17,11 +17,11 @@
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
 | `client1` | real-estate | **Live** | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-05-02 | See `reference-instance.md` |
-| `plec` | architecture | **Containers provisioned + n8n wired** (pending WABA + handoff data) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (not yet provisioned) | 2026-05-14 | See §Plec Arquitectos below |
+| `plec` | architecture | **Dashboard provisioned + features shipped** (pending WABA, SMTP, handoff data, landing) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-20 | See §Plec Arquitectos below |
 
 ## Plec Arquitectos
 
-**Stage:** Containers provisioned + n8n fully wired + sync workflow active. Only WABA + customer handoff data + dashboard provisioning pending. Live snapshot in `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\n8n-implementation.md` §0.
+**Stage:** Dashboard provisioned + architecture vertical shipped + Phase 2 providers/labor-pool tabs live. Only WABA + SMTP + handoff data + landing page pending. Live snapshot in `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\n8n-implementation.md` §0 and `infra-status.md`.
 
 ### Confirmed at session 2026-05-04
 
@@ -58,27 +58,44 @@
 - ✅ **Sheet schema mismatch resolved** — Plec's "emprendimientos" Sheet has columns `name | link | initial_investment | currency | status`, distinct from the platform's listing-shaped inventory. Mapping established in `_src/sync-inventory-build.js`. **Lesson:** the platform's `automation.inventory` schema enforces `NOT NULL` on all text columns; verticals that don't fill some of them must send `''` (empty string), not `NULL`. Numeric columns (`bedrooms`/`bathrooms`/`area_m2`) are nullable.
 - ⏸️ Router still inactive — waiting on SMTP relay credential, `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, the 7 `<TARGET>_WHATSAPP_NUMBER`s, `ALERT_EMAIL_TO`.
 
+### Updated 2026-05-19 (dashboard provisioning + architecture vertical)
+
+- ✅ Vertical `architecture` shipped to `botargento-dashboard` (commit `5b4e91e`): `src/config/verticals/architecture.ts` with 6 intents (`proyecto_lead`/`construccion_lead`/`gestiones_lead`/`desarrollo_lead`/`proveedor_intake`/`mano_obra_intake`), 7 handoff targets, registered in `index.ts`.
+- ✅ `provision-tenant.sh` patched to prompt `VERTICAL` (was hardcoded `real-estate`). Same commit.
+- ✅ **CI release.yml unblocked** (commit `5865e37`): added `"packageManager": "pnpm@10.33.0"` to `package.json`. Was failing since 2026-05-15 because corepack auto-resolved to pnpm 11.x (needs Node 22.13+, but Dockerfile uses Node 20). Side effect: client1 now eligible to receive updates too.
+- ✅ Script stdin-drain bug fixed (commit `ee03f77`): pre-flight `docker exec -i ... psql -c` dropped `-i` so piped input stops being consumed by docker.
+- ✅ Dashboard provisioned: `dashboard.plec.botargento.com.ar` 307→/login, TLS LE valid, magic-link login probado por Jonatan, allowlist (jonatan admin + plec.arq viewer).
+
+### Updated 2026-05-20 (Phase 2 dashboard tabs shipped)
+
+- ✅ Schema backfill: `automation.providers` + `automation.labor_pool` + 9 indices + `v_providers` / `v_labor_pool` added to canonical `whatsapp-automation-claude/postgres-setup.sql` (commit `a66bcd0`). Applied idempotently to client1's Postgres too — same schema across every tenant, UI differentiation is what changes.
+- ✅ `VerticalConfig.features` mechanism (commit `4cca5a0` on dashboard): optional `{ providersTab?: boolean; laborPoolTab?: boolean }` on each vertical config. Architecture opts into both; real-estate stays as-is.
+- ✅ Pages `/providers` and `/labor-pool` live in Plec with filters (search/category-or-specialty/zone/status with 300ms debounce), pagination (50/page via URL params), CSV export. Each page + export route does `notFound()` if its feature flag is off.
+- ✅ `REQUIRED_VIEWS` boot check extended to 7 views (`v_providers` + `v_labor_pool` added). Verified passing on Plec: `✓ All 7 required views present`.
+- ✅ Sidebar + MobileNav icons added: `Truck` (providers), `HardHat` (labor-pool).
+
 ### Pending (in order)
 
 1. ~~**n8n + Postgres**~~ — done 2026-05-08
-2. **Dashboard** — `./scripts/provision-tenant.sh plec` from `botargento-dashboard`
+2. ~~**Dashboard**~~ — done 2026-05-19
 3. **WABA onboarding** — embedded signup + activate-webhook to `https://plec.botargento.com.ar/webhooks/whatsapp`
 4. **SMTP credential + handoff data** — get from Plec, configure SMTP credential in n8n, add `META_*` and `<TARGET>_WHATSAPP_NUMBER`s to `/opt/n8n/plec/.env`, restart container, activate router.
-5. **Architecture vertical config** — `src/config/verticals/architecture.ts` (clone `real-estate.ts`)
-6. ~~**n8n wizards**~~ — done 2026-05-08 (6 wizards + router + sync, all in `n8n/wizards/`)
-7. **`automation.v_architecture_*` views** — over the shared `automation.inventory` table
-8. **Landing page clone** — Plec brand on top of `BotArgentoLandingPageRepo/landingpage`
-9. **Handoff config** — collect Plec's real emails/numbers per equipo (Arquitecto / Comercial / Técnico / Gestión / Desarrollos / Compras / RRHH + `alertas@plec.com.ar`)
+5. ~~**Architecture vertical config**~~ — done 2026-05-19
+6. ~~**n8n wizards**~~ — done 2026-05-08
+7. ~~**Providers + labor_pool dashboard tabs**~~ — done 2026-05-20
+8. **`automation.v_architecture_*` views** (optional) — only if architecture-specific metric queries warrant them (the existing 7 views may be enough)
+9. **Landing page clone** — Plec brand on top of `BotArgentoLandingPageRepo/landingpage`
+10. **Handoff config** — collect Plec's real emails/numbers per equipo (Arquitecto / Comercial / Técnico / Gestión / Desarrollos / Compras / RRHH + `alertas@plec.com.ar`)
 
 ### Vertical-specific notes
 
-- **Menú principal (6 opciones)** — Proyecto arquitectónico / Construcción / Gestiones municipales / Desarrollo inmobiliario / Proveedores / Mano de obra. Documented in §3 of `flow-v2.html`.
-- **Opción 1 sub-flows** (3 paths, fully step-by-step in §4 of `flow-v2.html`):
+- **Menú principal (6 opciones)** — Proyecto arquitectónico / Construcción / Gestiones municipales / Desarrollo inmobiliario / Proveedores / Mano de obra. Documented in §3 of `flow-v2.md`.
+- **Opción 1 sub-flows** (3 paths, fully step-by-step in §4 of `flow-v2.md`):
   - "Quiero diseñar mi casa" → terreno + zona + m² + nombre/contacto → Arquitecto
   - "Ya tengo un croquis" → zona + m² + descripción/archivo + nombre/contacto → Arquitecto
   - "No sé por dónde empezar" → idea + zona + presupuesto orientativo + nombre/contacto → Arquitecto
 - **Opción 2 sub-flows:** Construir de 0 / Ampliar o remodelar (→ Comercial), Dirección de obra (→ Técnico, lead caliente).
-- **Three platform databases** the bot writes: `lead_log` (conversations), `providers` (Opción 5 → `automation.providers` insert), `labor_pool` (Opción 6 → `automation.labor_pool` insert). The latter two **may need new tables** — flag for review against the platform invariant "no new base tables, only views". Likely solution: store both as rows in `automation.inventory` with `source_sheet='plec_providers'` / `'plec_labor_pool'`, then expose via views.
+- **Three platform databases** the bot writes: `lead_log` (conversations), `automation.providers` (Opción 5 → Conditional INSERT from wizard), `automation.labor_pool` (Opción 6 → Conditional INSERT from wizard). **Resolved 2026-05-20:** `providers` + `labor_pool` are now canonical platform tables present on every tenant (Phase 2 in `postgres-setup.sql`). Dashboard tabs are gated per vertical via `features.providersTab` / `features.laborPoolTab`.
 
 ### References for Plec
 

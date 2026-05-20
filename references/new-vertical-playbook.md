@@ -68,11 +68,19 @@ Decide:
 Single file. Defines:
 - Intent keys + display labels (Spanish unless overridden by `CLIENT_LOCALE`)
 - Per-intent chart colors (hardcoded hex — domain meaning, not brand)
-- Terminal flows set
+- Terminal flows set (which `lead_log.route` tokens count as "completed" for each intent's funnel)
+- Handoff target labels — substring matches against `escalations.handoff_target` to map to human-friendly team names
 - Attribution mode defaults
-- Any vertical-specific table column overrides
+- Window options + comparison template
+- **`features`** — opt-in to feature-gated UI: `providersTab` (`/providers`), `laborPoolTab` (`/labor-pool`). Omit when the vertical doesn't need them — defaults to "no extra features".
 
-Use `src/config/verticals/real-estate.ts` as the template. Estimated time: ~1 hour. Push, merge, build new image — same image now serves both verticals.
+Use `src/config/verticals/real-estate.ts` (baseline, no features) or `architecture.ts` (both features enabled) as the template. Estimated time: ~1 hour. **Don't forget to register the vertical in `src/config/verticals/index.ts`** — the registry resolves `VERTICAL=<key>` against this map; an unregistered key throws at runtime even if the file exists.
+
+Push, merge, build new image — same image now serves the new vertical.
+
+**Intent key convention:** the `key` in each `IntentDef` is the literal value n8n writes to `lead_log.intent`. So if your wizard emits `intent: 'proyecto_lead'`, the vertical's IntentDef key must be `'proyecto_lead'` (not the display label). Get this wrong and the dashboard shows 0 counts even with traffic.
+
+**Terminal routes are `lead_log.route` tokens, not `lead_log.intent` values.** The wizard emits a final `route` like `guided_proyecto_handoff` on the handoff turn; that token is what completion-rate UI matches against `terminalIntents[]`.
 
 ### 3. Adapt n8n wizards
 
@@ -138,14 +146,19 @@ On Jonatan's laptop, in the dashboard repo:
 
 The script (interactive, target ≤15 min):
 - Verifies n8n + Postgres exist for that tenant on the VPS
+- Pre-flight: checks that all `REQUIRED_VIEWS` (currently 7, including `v_providers`/`v_labor_pool` since 2026-05-20) exist in the tenant Postgres — fails fast otherwise
 - Generates strong DB password + `AUTH_SECRET`
 - Applies `dashboard.*` migrations to the tenant's Postgres
-- Prompts for: `CLIENT_NAME`, `CLIENT_PRIMARY_COLOR`, Resend credentials, allowlist of admin emails, vertical key (`VERTICAL=<key>`)
+- Prompts for: `CLIENT_NAME`, `CLIENT_PRIMARY_COLOR`, `VERTICAL` (default `real-estate`), Resend credentials, allowlist of admin emails
 - Generates `/opt/n8n/<clientN>/dashboard.compose.yml` + `dashboard.env` (mode 0600) on the VPS via SSH
 - Pulls image from GHCR, starts the container
 - Appends `<clientN>` to `/opt/scripts/tenants.txt` so future `tenant=all` deploys include it
 
 After it finishes: dashboard is reachable at `dashboard.<clientN>.botargento.com.ar`, ready for first admin login (magic link via Resend).
+
+**Driving the script non-interactively** (e.g. from CI, or with a heredoc): the script uses `read -rp` for inputs. The two `docker exec ... psql -c` calls in the pre-flight and the `primary_color` UPDATE intentionally **omit `-i`** so they don't drain piped stdin (this caused real bugs before the 2026-05-20 fix — the inputs would silently EOF and the script would exit with "CLIENT_NAME is required"). The remaining `docker exec -i` calls in the script keep `-i` because they pipe heredocs or files into psql.
+
+**Logo placement:** drop the agency's `logo.svg` at `/opt/n8n/<clientN>/assets/logo.svg` (mode 644, deploy-owned) **before** running the script — the dashboard container mounts it read-only at boot, and a missing file makes the container fail to start. If the source is a PNG or another raster format, wrap it in an SVG with an embedded base64 `<image>` — the compose hardcodes `.svg`.
 
 ### 6. Onboard the client's WhatsApp Business Account via the Meta Tech Provider backend
 

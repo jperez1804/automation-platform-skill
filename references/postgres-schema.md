@@ -101,6 +101,45 @@ Append-only log of every handoff or workflow error.
 
 The Phase 1 ALTERs (`handoff_target`, `preferred_contact_slot`) are idempotent (`ADD COLUMN IF NOT EXISTS`), so re-running `postgres-setup.sql` on existing installs is safe.
 
+### `automation.providers` (Phase 2 — canonical platform table since 2026-05-20)
+
+Supplier / vendor directory. Wizards INSERT here when a contact registers as a supplier. The dashboard exposes a `/providers` route gated by `verticalConfig.features.providersTab` — present on every tenant, but only the verticals that opt in show the UI.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGSERIAL | PK |
+| `contact_wa_id` | TEXT | Customer's WhatsApp ID, NOT NULL default `''` |
+| `business_name` | TEXT | Vendor/company name, NOT NULL default `''` |
+| `category` | TEXT | Rubro/category, NOT NULL default `''` |
+| `zone` | TEXT | Service zone, NOT NULL default `''` |
+| `email`, `phone` | TEXT | Contact info, NOT NULL default `''` |
+| `status` | TEXT | `'new'` (default) / `'approved'` / `'rejected'` |
+| `notes` | TEXT | Free-text, NOT NULL default `''` |
+| `lead_name`, `profile_name` | TEXT | Captured identity |
+| `created_at`, `updated_at` | TIMESTAMPTZ | |
+
+**Indexes:** `ix_providers_status_category` `(status, category)`, `ix_providers_zone`, `ix_providers_contact`, `ix_providers_created_at DESC`.
+
+**Insert pattern used by wizards:** "Conditional INSERT" — a Postgres node downstream of the wizard's Code node runs `INSERT … SELECT … WHERE $N::boolean = true`. The wizard sets the flag true only on the final turn, so the same node handles every step of the multi-turn conversation. Avoids modifying the shared persister.
+
+### `automation.labor_pool` (Phase 2 — canonical platform table since 2026-05-20)
+
+Talent / oficios pool. Wizards INSERT here when a worker registers (seeking work or offering services). Dashboard route `/labor-pool` gated by `verticalConfig.features.laborPoolTab`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGSERIAL | PK |
+| `contact_wa_id` | TEXT | NOT NULL default `''` |
+| `worker_name` | TEXT | NOT NULL default `''` |
+| `mode` | TEXT | `'seeking'` (busca trabajo) or `'offering'` (ofrece servicios) |
+| `specialty` | TEXT | NOT NULL default `''` |
+| `zone`, `phone` | TEXT | NOT NULL default `''` |
+| `status` | TEXT | `'new'` / `'contacted'` / `'archived'` |
+| `notes`, `lead_name`, `profile_name` | TEXT | NOT NULL default `''` |
+| `created_at`, `updated_at` | TIMESTAMPTZ | |
+
+**Indexes:** `ix_labor_pool_status_specialty`, `ix_labor_pool_mode_specialty`, `ix_labor_pool_zone`, `ix_labor_pool_contact`, `ix_labor_pool_created_at DESC`.
+
 ### `automation.inventory`
 
 Per-tenant catalog. Synced from Google Sheets (currently) by `v2-sync-inventory.json` every 15 min.
@@ -134,15 +173,21 @@ Per-tenant catalog. Synced from Google Sheets (currently) by `v2-sync-inventory.
 
 ## Dashboard-side views (read-only consumers)
 
-The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/db/views.ts` of the dashboard repo). v1 ships:
+The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/db/views.ts` of the dashboard repo). Current set (7 views — also the list in `REQUIRED_VIEWS`, checked by `scripts/verify-view-compat.mjs` at every container boot — missing any one of them is a fast-fail):
 
-- `v_daily_metrics`
-- `v_contact_summary`
-- `v_handoff_summary`
-- `v_follow_up_queue`
-- `v_flow_breakdown`
+| View | Source table(s) | Purpose |
+|---|---|---|
+| `v_daily_metrics` | lead_log + escalations | KPI cards on overview |
+| `v_flow_breakdown` | lead_log | Per-intent volume over time |
+| `v_contact_summary` | lead_log | Conversations list |
+| `v_handoff_summary` | escalations | Handoff target counts |
+| `v_follow_up_queue` | lead_log + escalations | Follow-up priority queue |
+| `v_providers` | providers | Supplier directory (`/providers` route) |
+| `v_labor_pool` | labor_pool | Talent pool (`/labor-pool` route) |
 
-Adding a new vertical does not require new views unless the metric semantics change. New verticals get their differentiation from the **dashboard's `verticalConfig`** (intents, terminal flows, colors), not from the schema.
+**Invariant:** the underlying tables and views are identical for every tenant — UI differentiation comes from `verticalConfig.features`, not from per-tenant schema variations. When extending the dashboard with a new vertical capability, the cleanest path is: add view to platform `postgres-setup.sql` → apply idempotently to existing tenant Postgres → add Drizzle types + select function to `src/db/views.ts` → add to `REQUIRED_VIEWS` → gate the UI route with a `verticalConfig.features.<flag>` check.
+
+Adding a new vertical does not require new views unless the metric semantics change. New verticals get their differentiation from the **dashboard's `verticalConfig`** (intents, terminal flows, colors, features), not from the schema.
 
 ## Tech debt to know about
 
