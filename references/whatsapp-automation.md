@@ -189,6 +189,88 @@ function handle({ session, normalized_event }) {
 
 The wizards in v2 follow this shape with significant length (`v2-inventory-wizard.json` is ~29 KB; the JS inside is a couple thousand lines).
 
+## Interactive messages (WhatsApp reply buttons)
+
+Since the Plec v2.1 patch (2026-05-22), the engine supports **Meta interactive reply buttons** as an additive extension to the text-only payload. Wizards opt in by emitting an optional `buttons[]` field; the sender branches on its presence; the router translates incoming button taps back into the same `text_body` shape that wizards already parse.
+
+### Pricing + Meta API constraints
+
+- Interactive reply buttons are **session messages**, not templates. They are **free** within the 24h customer-initiated service window (which is the only mode the bot ever operates in). No Meta pre-approval needed.
+- Max **3 buttons** per message. For more options, use interactive **list messages** (up to 10, organized into sections — same plumbing pattern, different payload).
+- `button.title` ≤ 20 chars UTF-8. `button.id` ≤ 256 chars — use it as a semantic key (`"si"`, `"no"`, `"buscando"`, `"no_se"`).
+- Reference: <https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-messages>
+
+### Wizard contract (additive)
+
+The wizard's return object gains an optional field:
+
+```js
+buttons: [
+  { id: 'si',       title: 'Sí' },
+  { id: 'no',       title: 'No' },
+  { id: 'buscando', title: 'Estoy buscando' }
+]
+```
+
+If `buttons` is absent → existing text-only path. If present → sender builds interactive payload. Order matters in WhatsApp's UI; first item is leftmost.
+
+### Three-layer change (already shipped in engine)
+
+**Router — `Normalize Event` Code node**: accepts `messages[0].type === 'interactive'` with `interactive.type ∈ {button_reply, list_reply}`. Sets `text_body = reply.id` (the semantic key) and `message_type = 'interactive_button_reply'` (or `_list_reply`). `event_kind` stays `'text'` so the downstream routing logic is unchanged. Wizards see `text_body` exactly as if the user had typed the button's id.
+
+**Sender — `Send WhatsApp Message` HTTP node `jsonBody`**: an expression that branches on `Array.isArray($json.buttons) && $json.buttons.length`. When buttons are present it builds `{ type: 'interactive', interactive: { type: 'button', body: { text: reply_text }, action: { buttons: [...] } } }`. Otherwise it falls back to the text payload. Wizards that don't emit buttons keep working identically — fully backward-compatible.
+
+**Wizards — `resolveOption(opts, input)` helper**: accepts BOTH numeric key (`"1"`) AND semantic id (`"si"`). So a step that emits buttons can also be answered by:
+1. Tapping the button (Meta sends `interactive.button_reply.id = 'si'` → router translates → wizard sees `text_body = 'si'`)
+2. Typing the literal text (`"si"`, `"no"`) — fallback for clients that don't render interactive messages
+3. Typing the legacy numeric key (`"1"`, `"2"`) — works as long as `<option>.key` matches; useful if the wizard previously rendered the options as a numbered list and users have it from history
+
+Buttons replace the numbered list for that prompt. Reply body shows only the question; tap-friendly UI replaces the visible enumeration.
+
+### Pattern for adding buttons to a new step
+
+In the wizard JS:
+
+```js
+const promptYesNo = (snapshot, errorPrefix = '') => {
+  const next = { ...snapshot, guided_step: 'yes_no', guided_options: yesNoOptions };
+  const reply = buildPrompt({
+    title: flowLabel + ' ' + flowEmoji,
+    instruction: 'Question text?',
+    options: [],            // ← no numbered list; buttons replace it
+    errorPrefix
+  });
+  const buttons = yesNoOptions.map(o => ({ id: o.value, title: o.label }));
+  return finalize({ reply, route: routePrefix + '_yes_no', snapshot: next, buttons });
+};
+```
+
+The `finalize()` function needs to accept `buttons` and pass it through to the returned `json` payload conditionally:
+
+```js
+return [{
+  json: {
+    reply_text: finalReply, route, intent, /* ... existing fields ... */,
+    ...(Array.isArray(buttons) && buttons.length ? { buttons } : {})
+  }
+}];
+```
+
+In the step parser:
+
+```js
+if (guidedStep === 'yes_no') {
+  const sel = resolveOption(yesNoOptions, inbound.text_body);
+  if (!sel) return promptYesNo(baseSnapshot, 'No entendi tu eleccion.');
+  return promptNext({ ...baseSnapshot, yes_no: sel.value });
+}
+```
+
+### When to use list messages instead of buttons
+
+- > 3 options but ≤ 10: interactive list message (`interactive.type = 'list'`). Same wiring pattern; payload shape differs slightly. Plec's main menu (6 options) is a candidate but not yet migrated.
+- For now, opt for buttons whenever options ≤ 3 (better UX than a list dropdown), keep numbered text for 4–10 (matches Plec's m² 4-bucket pattern), and consider list messages later.
+
 ## Error handler
 
 `v2-error-handler.json` is wired as the **global Error Workflow** in n8n settings. When any other workflow throws:
@@ -225,8 +307,11 @@ The n8n instance needs these. Names are stable across agencies; **values are per
 - `META_GRAPH_VERSION` — default `v22.0`
 - `SESSION_MEMORY_TTL_MS` — default `1800000` (30 min)
 - `DEFAULT_ASSISTANT_LANGUAGE` — default `es`
-- `REAL_ESTATE_*` — vertical-specific overrides (currency, market name, brand name); for non-real-estate verticals, define your own `<VERTICAL>_*` set
-- `OWNERS_WHATSAPP_NUMBER`, `VALUATIONS_WHATSAPP_NUMBER`, `QUESTIONS_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `RENTS_WHATSAPP_NUMBER` — per-team internal notification numbers (handoff_target → number)
+- `BRAND_NAME` — generic brand name used by the persister for email subjects + WhatsApp handoff headers. Fallback chain: `BRAND_NAME → ARCHITECTURE_BRAND_NAME → REAL_ESTATE_BRAND_NAME → 'Bot'`. Set the generic `BRAND_NAME` for new tenants; the vertical-specific vars are kept for backward compat.
+- `<VERTICAL>_*` — additional per-vertical overrides (currency, market name, sheet ID, etc.). Real-estate uses `REAL_ESTATE_*`; architecture uses `ARCHITECTURE_*`.
+- `<UPPER>_WHATSAPP_NUMBER` — per-team internal notification numbers, one per `handoff_target`. **Generic convention since the 2026-05-22 persister patch**: the persister derives the env var name from `handoff_target` itself by uppercasing and replacing non-alphanumeric with underscore, then appending `_WHATSAPP_NUMBER`. So adding a new vertical with handoff targets like `architect` / `technical` / `municipal` just needs those env vars set — no code change required. Examples currently in use:
+  - Real estate: `VALUATIONS_WHATSAPP_NUMBER`, `QUESTIONS_WHATSAPP_NUMBER`, `OWNERS_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `RENTS_WHATSAPP_NUMBER`
+  - Architecture (Plec): `ARCHITECT_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `TECHNICAL_WHATSAPP_NUMBER`, `MUNICIPAL_WHATSAPP_NUMBER`, `DEVELOPMENT_WHATSAPP_NUMBER`, `PURCHASING_WHATSAPP_NUMBER`, `HR_WHATSAPP_NUMBER`
 - `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4o-mini`), `AI_CONFIDENCE_THRESHOLD` (default `0.6`) — wired but **not used** in v2 wizards (planned for "Otras Consultas" AI triage)
 
 **Sheet ID:** in current real-estate code, hardcoded as `REAL_ESTATE_SHEET_ID=1u4YkqBlPSN6UrUW_ra4hYWuRzEj8fxNp3xqWjjV1-LY` in n8n's variables. Per-tenant: each tenant has their own Sheet ID + their own Google OAuth credential.
