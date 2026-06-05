@@ -93,6 +93,18 @@ See `references/meta-tech-provider.md` for the full state machine + Graph API en
 3. **Dashboard view:** Agency operator opens `dashboard.<clientN>.botargento.com.ar` → magic-link login (Resend) → Server Components query Postgres views (`automation.v_*`) → render KPIs, conversations, handoffs, follow-up queue.
 4. **Lead acquisition (top of funnel):** Prospect lands on agency landing page → clicks Calendar CTA or WhatsApp FAB → enters the WhatsApp router from the very first message.
 
+## Outbound companion (Bot Argento Sales)
+
+The four pillars above are all **inbound** — they answer customers who message first, inside Meta's
+24h service window. A fifth, **outbound** engine reverses the direction: it cold-messages prospects
+with a pre-approved Marketing template, and when they reply the existing router + a pitch wizard
+qualify them in-window. It **reuses** the shared sender / persister / error-handler / router skeleton,
+**adds** a new `outreach.*` Postgres schema (campaigns / recipients / suppression — `automation.*`
+stays frozen) plus a `v2-campaign-runner.json` workflow, and runs as its own tenant on a **dedicated
+sales WABA**. Built first as Jonatan's own client-acquisition tool, and offered per-tenant as a
+sellable add-on (drop `outreach.*` + the runner into any existing tenant, swap the pitch wizard +
+template). See `references/outbound-sales.md`.
+
 ## What's NOT in the platform (intentional gaps)
 
 - **No CRM**, no calendar integration beyond the public Google Calendar booking link, no payment processing.

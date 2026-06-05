@@ -16,12 +16,47 @@
 
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
-| `client1` | real-estate | **Live** | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-05-02 | See `reference-instance.md` |
-| `plec` | architecture | **Dashboard provisioned + features shipped** (pending WABA, SMTP, handoff data, landing) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-20 | See §Plec Arquitectos below |
+| `client1` | real-estate | **Live** (dashboard refresh PRs 1→13.1 deployed 2026-06-01 — same image as Plec) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-06-01 | See `reference-instance.md` + §Client1 dashboard refresh below |
+| `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
+| `bot-argento-sales` | outbound-sales | **Scaffolding** (repo generated locally 2026-06-04; not yet on VPS, no WABA) | `ventas.botargento.com.ar` (n8n) | 2026-06-04 | See §Bot Argento Sales below |
+
+## Client1 dashboard refresh — 2026-06-01
+
+Same image jump that Plec received progressively over 2026-05-22 → 2026-06-01. Client1 was running the pre-refresh image `c0f2b12e7a22` (built 2026-05-03) when Plec onboarded its visual refresh sequence; deferred for client1 until Plec validated the whole thing in production. Single pull + recreate the day after the last hotfix.
+
+**Deployed image**: `sha256:9a70d0bd5d8b...` (built 2026-06-01, same SHA Plec runs).
+
+**Brand-specific config preserved unchanged** in `/opt/n8n/client1/dashboard.compose.yml`:
+
+| Var | Value |
+|---|---|
+| `CLIENT_NAME` | `Inmobiliaria` |
+| `CLIENT_PRIMARY_COLOR` | `#3b82f6` (Tailwind blue-500) |
+| `CLIENT_LOGO_URL` | `/logos/client.svg` |
+| `VERTICAL` | `real-estate` |
+| `AUTH_URL` | `https://dashboard.client1.botargento.com.ar` |
+| `AUTH_EMAIL_FROM` | `no-reply@botargento.com.ar` |
+
+The refresh's design was multi-tenant + theme-driven by construction — `#3b82f6` propagates as the chart-1 rank color (replacing Plec's `#facc15` yellow), active nav rail, focus rings, WindowToggle active state. Charts no longer reuse per-intent `IntentDef.color` hex (PR 4 ignores it by rank).
+
+**Pages that 404 correctly on client1** (vertical-gated via `verticalConfig.features.{providersTab,laborPoolTab}` which only `architecture` sets):
+- `/providers`
+- `/labor-pool`
+
+**Real-estate tier handling vs Plec**: client1 didn't receive a `handoffTargets[].priority` re-balance like Plec did 2026-05-27. Real-estate's `handoffTargets` in `botargento-dashboard/src/config/verticals/real-estate.ts` does NOT set a `priority` field on any entry → the `PRIORITY_BY_TARGET` map in the persister returns `3` (default tier T3 "Calificado") for every escalation. Badges on `/handoffs` will render uniformly T3 until the client requests a re-balance. **NOT a regression — operating as designed.**
+
+**Migrations applied at boot**: dashboard container entrypoint ran `pnpm db:migrate` (3 files already applied: `0000_init.sql`, `0001_escalation_type.sql`, `0002_app_settings.sql`) and `pnpm db:verify-views` (7/7 required `automation.v_*` present).
+
+**Smoke test passed 2026-06-01** by user: Panel KPIs, charts rank palette, /handoffs strip + table, /conversations row-as-Link, /conversations/[waId] thread (post PR 13.1 fix — thread on the wide column, rail on the 300 px), /follow-up tonal pills, /settings brand picker contrast meter, dark mode toggle.
+
+**Pending for client1** (intentional, no client request yet):
+- Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.
+
+---
 
 ## Plec Arquitectos
 
-**Stage:** Dashboard provisioned + architecture vertical shipped + Phase 2 providers/labor-pool tabs live. Only WABA + SMTP + handoff data + landing page pending. Live snapshot in `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\n8n-implementation.md` §0 and `infra-status.md`.
+**Stage:** Live — bot v2.3 atendiendo WhatsApp, dashboard operativo con dashboards y tabs gated por vertical, tier matrix re-balanceada para reflejar la urgencia operativa real. Pending: emails reales de cada equipo (Plec sigue usando `jonatanperez1804@gmail.com` para todos los handoffs durante test phase) + landing page rebrandeada. Live snapshot en `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\n8n-implementation.md` §0 y `infra-status.md`.
 
 ### Confirmed at session 2026-05-04
 
@@ -74,34 +109,151 @@
 - ✅ `REQUIRED_VIEWS` boot check extended to 7 views (`v_providers` + `v_labor_pool` added). Verified passing on Plec: `✓ All 7 required views present`.
 - ✅ Sidebar + MobileNav icons added: `Truck` (providers), `HardHat` (labor-pool).
 
-### Pending (in order)
+### Updated 2026-05-22 (WABA + go-live)
+
+- ✅ Meta WABA `1473386571198969` configured · phone number `1142902705574108` (+54 9 11 5139-8977) verified · `META_ACCESS_TOKEN` set in `/opt/n8n/plec/.env` · webhook override apuntando a `https://plec.botargento.com.ar/webhook/whatsapp/meta` (Tech Provider backend lo armó).
+- ✅ SMTP credential `SMTP Handoff` wired to persister + error handler via Resend.
+- ✅ Router activated. Bot recibiendo + respondiendo mensajes reales.
+- ⏸️ Per-equipo numbers (`<TARGET>_WHATSAPP_NUMBER` × 7) y `ALERT_EMAIL_TO` siguen apuntando a Jonatan durante test phase. Hay que rotarlos a los datos operativos de Plec cuando ellos los confirmen.
+
+### Updated 2026-05-23 (UX polish + handoff priority system)
+
+- ✅ Interactive reply buttons en 4 prompts Yes/No (terreno, planos, obra_iniciada, planos aprobados).
+- ✅ m² option list unificado en construccion + desarrollo (mismos 4 buckets que proyecto — la decisión cambió post 2026-05-27 para desarrollo, ver más abajo).
+- ✅ Tier priority (T1/T2/T3/T4) end-to-end: schema column `automation.escalations.priority`, persister derivation via `PRIORITY_BY_TARGET` map, WhatsApp header markers (⚡ T1 / ⭐ T2 / 📋 T4), dashboard `/handoffs` badge + sort default (priority ASC, createdAt DESC), email body `Priority: T<n>` line.
+- ✅ `handoff_summary_lines` wizard→persister contract: cada wizard emite resumen vertical-aware que el persister muestra en email + WhatsApp del asesor (en vez del bloque "Collected answers" genérico real-estate-coded).
+- ✅ Opción 5 (Proveedores) simplificada — drop "Ya soy proveedor" path (era dead-weight UX, derivaba a Compras igual sin diferenciar).
+- ✅ Persister `<UPPER>_WHATSAPP_NUMBER` env convention generic (era hardcoded a real-estate); `brandName` fallback chain (BRAND_NAME → ARCHITECTURE_BRAND_NAME → REAL_ESTATE_BRAND_NAME → 'Bot').
+
+### Updated 2026-05-27 (re-balance tier matrix + Desarrollo restructure + drop "Estoy buscando")
+
+- ✅ **Tier matrix flip** (acordado con cliente en reunión): T1 ⚡ ahora cubre architect + development + municipal (eran T3/T2). T2 ⭐ cubre technical + sales (toda Construcción). T3 vacío (fallback). T4 📋 sin cambio. Distribución del menú: ~61% T1, ~22% T2, ~17% T4. Aplicado a persister live + dashboard `architecture.ts`.
+- ✅ **Opción 4 (Desarrollo)** reestructurada de 4 a 3 sub-opciones: rename "Invertir en proyectos" → "Invertir en pozo"; drop "Comprar una propiedad" (path que leía `automation.inventory` para seleccionar emprendimiento); reordenar "Desarrollar terreno" 3→2 y "Asociarse" 4→3. Sync workflow `v2.0 - Sync Inventory (Plec)` queda activo (la tabla sigue refrescándose por si vuelve el feature o se construye una vista de catálogo en el dashboard).
+- ✅ "Desarrollar un terreno" — superficie del terreno cambia de option list (4 buckets) a texto libre — el cliente necesitaba capturar terrenos grandes con valor preciso (ej. "1850 m²", "una hectárea").
+- ✅ Drop "[Estoy buscando]" del step `¿Ya tenés terreno?` (Opción 1).
+
+### Updated 2026-05-28 (4 ajustes menores post-reunión)
+
+- ✅ **Opción 1 — drop "Ya tengo planos"**: sub-menú baja de 4 a 3 opciones (idea / anteproyecto / cotizar). El path `planos` (que pedía descripción libre) se elimina. Quien tiene planos canaliza por "Quiero cotizar proyecto".
+- ✅ **Opción 2.4 rename** "Cotizar obra" → "Reforma / Ampliación". Solo label, `value` interno `cotizar` se mantiene para no romper queries históricas. El flow downstream queda idéntico.
+- ✅ **Opción 4.1 (Invertir en pozo)** → direct handoff. Se eliminaron los 2 steps de calificación (monto + zona). El equipo de Desarrollos califica el lead en la conversación directa.
+- ✅ **Opción 1.3 (Cotizar proyecto)** → drop step `plazo`. Después de zona + m² va directo al handoff (era zona → m² → plazo → handoff; ahora zona → m² → handoff). El arquitecto puede preguntar plazo en la conversación humana si lo necesita.
+- ✅ **Opción 5 + 6 — silenciar handoff**: drop email + WA + escalation row para nuevas altas de proveedores y mano de obra. El INSERT a `automation.providers` / `automation.labor_pool` sigue funcionando. El equipo Plec consulta `/providers` y `/labor-pool` en el dashboard (pull-only). Wizards modificados: `_src/proveedores.js` y `_src/mano-obra.js` con `handoff: false, sendEmailAlert: false` en el `finalize()` del `insertAndHandoff`.
+
+### Updated 2026-05-29 (rotation de handoff numbers + table truncate + template mode handoffs)
+
+**Bloque 1 — rotation operativa para go-live**:
+- ✅ Rotated 7 `<TARGET>_WHATSAPP_NUMBER` env vars from Jonatan (`5491121911850`) to el número de operaciones de Plec (`5491140839109`). Aplicado via `sed -i` en `/opt/n8n/plec/.env`.
+- ✅ `ALERT_EMAIL_TO` queda en `jonatanperez1804@gmail.com` como safety net (decisión explícita del cliente).
+- ✅ Truncate de 5 tablas pre-go-live: `lead_log` (760→0), `escalations` (59→0), `session_memory` (5→0), `providers` (6→0), `labor_pool` (6→0). `inventory` preservada (3 filas reales del Sheet Plec).
+- ✅ Backup del `.env` en `/opt/n8n/plec/.env.bak.<timestamp>` por rollback.
+
+**Bloque 2 — Meta template HSM para handoffs**:
+- ⚠️ **Issue descubierto pre-go-live**: con texto free-form la WhatsApp Cloud API silently descarta handoffs a números que no escribieron al business en 24h. El número de ops Plec (5491140839109) nunca había escrito → handoffs no llegaban.
+- ✅ Template `handoff_notification` (Utility, `es_AR`) creado en Plec WABA (`1473386571198969`). Aprobado por Meta.
+- ✅ Persister upgraded a dual-mode: si `$env.META_HANDOFF_TEMPLATE_NAME` está set → payload `type: 'template'`. Si no → fallback a `type: 'text'`. Commit `dea7efa` en engine repo, commit `2417656` en Plec Automation.
+- ✅ Env vars seteadas en `/opt/n8n/plec/.env` + `docker-compose.yml`: `META_HANDOFF_TEMPLATE_NAME=handoff_notification` + `META_HANDOFF_TEMPLATE_LANG=es_AR`.
+- ✅ Container recreado (`docker-compose up -d --force-recreate n8n`). Smoke test OK.
+- 📘 **Pattern documentado** en `whatsapp-automation.md` §6 "Template-mode handoffs" — incluye las 2 restricciones de Meta encontradas (#132018 newlines en parámetros, #132005 header limit 60 chars) y el procedure step-by-step para onboardear futuros tenants a template mode.
+- 🛠️ **Helpers nuevos** en `Plec Automation/scripts/`:
+  - `patch-persister-template.mjs` — REST PUT para parchar persister live de un tenant.
+  - `sync-persister-snapshot.mjs` — copia config del persister live al engine snapshot, para mantener `whatsapp-automation-claude/v2-persist-session-and-logs.json` alineado.
+
+### Distribución actual del menú (post 2026-05-28)
+
+Total sub-opciones: **17**. T1 ⚡ ≈ 59% (Opción 1.* + 3.* + 4.*) · T2 ⭐ ≈ 24% (Opción 2.*) · T4 📋 ≈ 18% (Opción 5 + 6.*).
+
+### Pending (post go-live)
 
 1. ~~**n8n + Postgres**~~ — done 2026-05-08
 2. ~~**Dashboard**~~ — done 2026-05-19
-3. **WABA onboarding** — embedded signup + activate-webhook to `https://plec.botargento.com.ar/webhooks/whatsapp`
-4. **SMTP credential + handoff data** — get from Plec, configure SMTP credential in n8n, add `META_*` and `<TARGET>_WHATSAPP_NUMBER`s to `/opt/n8n/plec/.env`, restart container, activate router.
+3. ~~**WABA onboarding**~~ — done 2026-05-22
+4. ~~**SMTP credential**~~ — done 2026-05-22
 5. ~~**Architecture vertical config**~~ — done 2026-05-19
-6. ~~**n8n wizards**~~ — done 2026-05-08
+6. ~~**n8n wizards**~~ — done 2026-05-08, refinados continuamente
 7. ~~**Providers + labor_pool dashboard tabs**~~ — done 2026-05-20
-8. **`automation.v_architecture_*` views** (optional) — only if architecture-specific metric queries warrant them (the existing 7 views may be enough)
-9. **Landing page clone** — Plec brand on top of `BotArgentoLandingPageRepo/landingpage`
-10. **Handoff config** — collect Plec's real emails/numbers per equipo (Arquitecto / Comercial / Técnico / Gestión / Desarrollos / Compras / RRHH + `alertas@plec.com.ar`)
+8. ~~**Handoff priority system**~~ — done 2026-05-23, re-balanceado 2026-05-27
+9. **Per-equipo data** — rotar los 7 `<TARGET>_WHATSAPP_NUMBER` y `ALERT_EMAIL_TO` de placeholder (`5491121911850` / `jonatanperez1804@gmail.com`) a los datos reales que confirme Plec.
+10. **Landing page clone** — Plec brand sobre `BotArgentoLandingPageRepo/landingpage`. No bloquea operación pero ayuda al onboarding orgánico de nuevos clientes.
+11. **Google Sheets OAuth → Service Account** (tech debt) — la app OAuth quedó *unverified*, no escala bien. Migrar a Service Account cuando Plec haga go-live agresivo.
+12. **`automation.v_architecture_*` views** (opcional) — solo si emergen métricas architecture-specific que las 7 views actuales no cubren.
 
-### Vertical-specific notes
+### Helpers Plec-specific (en el repo `Plec Automation`)
 
-- **Menú principal (6 opciones)** — Proyecto arquitectónico / Construcción / Gestiones municipales / Desarrollo inmobiliario / Proveedores / Mano de obra. Documented in §3 of `flow-v2.md`.
-- **Opción 1 sub-flows** (3 paths, fully step-by-step in §4 of `flow-v2.md`):
-  - "Quiero diseñar mi casa" → terreno + zona + m² + nombre/contacto → Arquitecto
-  - "Ya tengo un croquis" → zona + m² + descripción/archivo + nombre/contacto → Arquitecto
-  - "No sé por dónde empezar" → idea + zona + presupuesto orientativo + nombre/contacto → Arquitecto
-- **Opción 2 sub-flows:** Construir de 0 / Ampliar o remodelar (→ Comercial), Dirección de obra (→ Técnico, lead caliente).
-- **Three platform databases** the bot writes: `lead_log` (conversations), `automation.providers` (Opción 5 → Conditional INSERT from wizard), `automation.labor_pool` (Opción 6 → Conditional INSERT from wizard). **Resolved 2026-05-20:** `providers` + `labor_pool` are now canonical platform tables present on every tenant (Phase 2 in `postgres-setup.sql`). Dashboard tabs are gated per vertical via `features.providersTab` / `features.laborPoolTab`.
+- **`scripts/patch-wizard-live.mjs <proyecto|construccion|desarrollo>`** — genérico, parametrizable. Lee el `parameters.jsCode` del Code node `Run Wizard Step` desde el snapshot regenerado (`n8n/wizards/v2-<wizard>-wizard.json`) y hace PUT al workflow live de Plec n8n. Usa la whitelist de `ALLOWED_SETTINGS` para evitar el 400 "additional properties" del n8n REST. Requiere env var `PLEC_N8N_API_KEY`. Reemplaza al viejo `patch-desarrollo-live.mjs` que era hardcoded a un solo wizard. **Pattern reusable**: para cualquier tenant futuro que necesite parchear wizards en vivo, clonar este script cambiando el mapping `WIZARDS` con los IDs del tenant y el `N8N_BASE` URL.
+- **`scripts/import-n8n.mjs`** — idempotent importer con manifest persistido (gitignored). Sube los 11 workflows de cero o los actualiza in-place. Usado en el provisionamiento inicial 2026-05-08.
+
+### Vertical-specific notes (Plec, estado actual)
+
+- **Menú principal (6 opciones)** — Proyecto arquitectónico / Construcción / Gestiones municipales / Desarrollo inmobiliario / Proveedores / Mano de obra. Documentado en §3 de `flow-v2.md`.
+- **Opción 1 — Proyecto arquitectónico** (3 sub-opciones post 2026-05-28):
+  - 1. Tengo una idea → terreno (Sí/No) → zona → m² → Arquitecto ⚡
+  - 2. Quiero un anteproyecto → terreno (Sí/No) → zona → m² → Arquitecto ⚡
+  - 3. Quiero cotizar proyecto → zona → m² → Arquitecto ⚡
+- **Opción 2 — Construcción / Dirección de obra** (4 sub-opciones):
+  - 1. Construir desde cero / 2. Continuar una obra / 4. Reforma / Ampliación → planos → m² → zona → Comercial ⭐
+  - 3. Dirección de obra → obra_iniciada → Técnico ⭐ (fast-track)
+- **Opción 3 — Gestiones municipales** (4 sub-opciones): permiso / regularización / final / consulta → municipio → planos_aprobados → Gestión municipal ⚡
+- **Opción 4 — Desarrollo inmobiliario** (3 sub-opciones post 2026-05-28):
+  - 1. Invertir en pozo → **direct handoff** (sin calificación) → Desarrollos ⚡
+  - 2. Desarrollar un terreno → zona → superficie (texto libre) → estado_dominial → Desarrollos ⚡
+  - 3. Asociarme para un desarrollo → zona → tipo_aporte → descripción → Desarrollos ⚡
+- **Opción 5 — Proveedores** (alta-only, sin sub-menú): rubro → empresa → zona → INSERT `automation.providers` + Compras 📋
+- **Opción 6 — Mano de obra** (2 sub-opciones): busco trabajo / ofrezco servicios → especialidad → zona → nombre → INSERT `automation.labor_pool` + RRHH 📋
+- **Three platform databases** the bot writes: `lead_log` (conversations), `automation.providers` (Opción 5 → Conditional INSERT), `automation.labor_pool` (Opción 6 → Conditional INSERT). Dashboard tabs gated via `features.providersTab` / `features.laborPoolTab`.
 
 ### References for Plec
 
 - Proposal: `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\flow-v2.html`
 - Infra status doc (live): `C:\Desarollo\jperez\plecarquitectos\Plec Automation\docs\plec-arquitectos\infra-status.md`
 - Plan that generated this state: `C:\Users\jperez\.claude\plans\can-you-check-the-stateless-origami.md`
+
+## Bot Argento Sales
+
+**Stage:** Scaffolding — the **outbound** companion to the inbound platform (the mirror image: it
+cold-messages prospects with a Meta template that earns a reply, then the existing router + a `ventas`
+pitch wizard qualify them in-window and hand off to Jonatan). Architecture + the Phase-B add-on recipe
+live in `outbound-sales.md`. Dual purpose: Phase A = Jonatan's own client acquisition; Phase B = sold
+to clients as an "outbound campaigns" add-on dropped into their existing tenant.
+
+**Workspace:** `C:\Desarollo\jperez\bot-argento-sales\Sales Automation\` (mirrors the Plec layout).
+**Subdomain:** `ventas.botargento.com.ar` → n8n (container `n8n-ventas`). Dedicated **sales WABA**.
+
+### Confirmed at session 2026-06-04 (scaffold)
+
+- Slug/path `bot-argento-sales` → `…\Sales Automation\`; outbound state in a new `outreach.*` schema
+  (campaigns/recipients/suppression) — `automation.*` stays frozen (invariant #1). Reply
+  conversations land in `automation.*` via the shared engine.
+- Reuses engine JSONs (send / persist [already dual-mode template handoff] / error-handler) copied
+  from `whatsapp-automation-claude`. Net-new: `v2-campaign-runner.json` + `v2-ventas-wizard.json` +
+  the router's opt-out branch.
+- ✅ Scaffolded + smoke-tested locally: `build.mjs` emits 3 valid JSONs; `ventas.js` steps
+  entry→intro→rubro→hoy→demo→handoff (+ known-vertical skip + decline); `campaign-runner.js` emits
+  valid Meta template payloads (cap/suppression gated in SQL); `seed-recipients.mjs` rejects rows
+  without `opt_in_basis`.
+- **Deviations from the original plan:** personalization uses a `Read Recipient` Postgres node, not a
+  `session_memory` seed (TTL-proof); no `patch-persister-template.mjs` (copied persister already
+  template-capable).
+
+### Pending (next sessions)
+
+1. **Provision VPS tenant** — `/opt/n8n/ventas/` (rsync compose + .env), apply `postgres-setup.sql`,
+   add `ventas` to `/opt/scripts/tenants.txt`, TLS.
+2. **Sales WABA onboarding** — embedded signup via Tech Provider backend; set `META_*`; webhook
+   override → `https://ventas.botargento.com.ar/webhook/whatsapp/meta`.
+3. **Import + wire** — `import-n8n.mjs` → MCP-wire executeWorkflow ids + Postgres credential (Read
+   Recipient, Read Pending Batch, Mark Sent, Insert Suppression, router DB nodes) + `set-error-workflow.mjs`.
+4. **Templates** — submit `outreach_intro` (Marketing) + `handoff_notification` (Utility) under the
+   sales WABA; set `META_HANDOFF_TEMPLATE_NAME` once approved.
+5. **First campaign** — `outreach.campaigns` row (architecture vertical), seed recipients, ramp 30–50/day.
+6. `SALES_CALENDAR_URL` for the demo CTA.
+
+### References for Bot Argento Sales
+
+- Architecture + Phase-B recipe: `references/outbound-sales.md`
+- Live state: `C:\Desarollo\jperez\bot-argento-sales\Sales Automation\docs\ventas\infra-status.md`
+- Flow spec: `…\docs\ventas\flow-v2.md` · Compliance: `…\docs\ventas\outreach-compliance.md`
+- Plan that generated this scaffold: `C:\Users\jperez\.claude\plans\i-think-we-should-linear-corbato.md`
 
 ## How to add a new tenant to this file
 

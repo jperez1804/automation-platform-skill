@@ -242,3 +242,4 @@ For the architecture vertical specifically, lean on the existing skills `fronten
 - `references/meta-tech-provider.md` — exact embedded signup + webhook activation flow
 - `references/vps-deployment.md` — provisioning paths, SSH access, deploy gotchas
 - `references/reference-instance.md` — Bot Argento as the worked example (don't copy its brand for a new agency!)
+- `references/outbound-sales.md` — **Outbound add-on** (cold-outreach campaigns): onboarding it onto an existing tenant is in that file's §"Phase B — onboard the outbound add-on onto an existing tenant".
