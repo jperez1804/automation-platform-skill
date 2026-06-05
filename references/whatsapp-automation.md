@@ -303,6 +303,10 @@ The n8n instance needs these. Names are stable across agencies; **values are per
 - `ALERT_EMAIL_TO` — where handoff + error alerts go
 - `ALERT_FROM_EMAIL` — SMTP sender
 
+**Recommended (template-mode handoffs — bypasses Meta's 24h window):**
+- `META_HANDOFF_TEMPLATE_NAME` — name of the Meta-approved template used to deliver handoff notifications to the ops team (e.g. `handoff_notification`). When set, the persister's `Prepare Handoff WA Notification` Code node emits a `type: 'template'` payload instead of `type: 'text'`. **Critical for production**: without this, the WhatsApp Cloud API silently drops handoff notifications to numbers that haven't messaged the business in the last 24h. See "Template-mode handoffs" section below.
+- `META_HANDOFF_TEMPLATE_LANG` — language code matching the template (e.g. `es_AR`, `es`). Defaults to `es_AR` if unset.
+
 **Optional / per-vertical:**
 - `META_GRAPH_VERSION` — default `v22.0`
 - `SESSION_MEMORY_TTL_MS` — default `1800000` (30 min)
@@ -377,9 +381,106 @@ When the user discovers their Sheet shape differs from the platform's expectatio
 2. Find the target Code node, swap `parameters.jsCode`
 3. PUT `/workflows/<id>` with the same `{name, nodes, connections, settings}` — credentials and connection wiring are preserved
 
-Reference: `scripts/update-sync-jscode.mjs` in `Plec Automation/`.
+**PUT body must whitelist settings keys.** n8n's REST rejects `additionalProperties` in `settings` (e.g., the platform writes things like `availableInMCP`, `timeSavedMode` that the API schema doesn't accept on PUT). Whitelist the safe ones:
 
-### 6. Validator false positives to ignore
+```js
+const ALLOWED_SETTINGS = [
+  'executionOrder', 'saveExecutionProgress',
+  'saveDataErrorExecution', 'saveDataSuccessExecution',
+  'saveManualExecutions', 'callerPolicy', 'errorWorkflow',
+  'timezone', 'executionTimeout'
+];
+```
+
+References:
+
+- **`scripts/patch-wizard-live.mjs <wizard>`** in `Plec Automation/` — generic helper, parametrizable per wizard. Reads `parameters.jsCode` of the `Run Wizard Step` Code node from the regenerated snapshot (`n8n/wizards/v2-<wizard>-wizard.json`) and PUTs to the live workflow. Has a hardcoded `WIZARDS` map of `{ id, json }` per Plec wizard. **Clone pattern**: for any tenant that needs to patch wizards in-place, copy + change the `WIZARDS` map and `N8N_BASE` URL. Requires `PLEC_N8N_API_KEY` env var (or rename for the tenant).
+- **`scripts/update-sync-jscode.mjs`** in `Plec Automation/` — older, hardcoded version that only patches the sync-inventory wizard. Predates the generic helper above.
+
+**When to use patchNodeField (MCP) vs the script**:
+
+- **Surgical change** (rename one label, add one entry to a map, etc.): use `mcp__n8n-mcp__n8n_update_partial_workflow` with `patchNodeField` operation — pass `find`/`replace` strings. Atomic.
+- **Substantial change** (multiple zones of the jsCode touched, function added/removed, branching logic changed): use the script. Replaces the whole jsCode in one PUT, simpler to reason about.
+- **Watch out for `\u` escape sequences in find/replace via MCP**: `\u{...}` (brace form) survives JSON parsing because it's not a valid JSON escape; `\uXXXX` (4-hex form) gets decoded into the Unicode codepoint before reaching the MCP. Avoid `\uXXXX` literals in find strings — use surgical patches that don't include them, or fall back to the script.
+
+### 6. Template-mode handoffs (bypasses Meta's 24h window) ⚠️ critical for prod
+
+**The problem.** WhatsApp Cloud API rule: a business can only send **free-form text** to numbers that have messaged the business in the last 24 hours. The persister's default `Prepare Handoff WA Notification` Code node produces a `type: 'text'` payload. When the ops team number has never written to the business WhatsApp (the common case for a freshly provisioned tenant), Meta accepts the POST with **200 OK** but **silently discards the delivery**. Handoffs never arrive. Discovered on Plec the day before go-live (2026-05-29).
+
+**The fix.** Use a Meta-approved **template message** (HSM) for the handoff notification. Templates bypass the 24h window. The persister was upgraded to dual-mode (commit `dea7efa` engine repo, 2026-05-29):
+
+- If `$env.META_HANDOFF_TEMPLATE_NAME` is set → build `type: 'template'` payload with header/body/URL-button components.
+- If unset → fallback to `type: 'text'` (legacy behavior, still works for tenants whose ops team has already opened the 24h window).
+
+The HTTP node's `jsonBody` was changed from a hardcoded text payload to `={{ $json.whatsapp_payload }}` so the Code node's output is passed through unchanged.
+
+**Template structure** (the one Plec ships with — clone for new tenants):
+
+```
+Name: handoff_notification
+Category: Utility (transactional notifications, fewer restrictions than Marketing)
+Language: es_AR (or per-locale)
+
+Header (Text): {{1}}                          ← target-specific marker + label
+                                                 ex. "⚡ 🏗️ Nuevo lead de Proyecto arquitectonico"
+                                                 (max 60 chars including emojis — see #132005 below)
+
+Body:
+  Nuevo lead capturado por el bot de Plec Arquitectos.
+
+  Contacto: {{1}}                             ← lead_name
+  WhatsApp: wa.me/{{2}}                       ← contact_wa_id digits
+  Prioridad: {{3}}                            ← e.g. "T1 - Urgente"
+
+  Resumen del intake:
+  {{4}}                                       ← single-line summary
+                                                 (NO newlines — see #132018 below)
+
+  Tocá el botón debajo para abrir la conversación en el dashboard.
+
+Footer: <BrandName> · Bot Argento
+
+Button (URL, Visit Website):
+  Text: "Ver en dashboard"
+  URL type: Dynamic
+  Prefix: https://dashboard.<tenant>.botargento.com.ar/conversations/
+  Variable: {{1}} (sample: a real wa_id like 5491121911850)
+```
+
+The 4 body parameters at the Code-node level are:
+1. `contactName` — `lead_name || profile_name || 'Sin nombre'`
+2. `contactWaIdDigits` — `contact_wa_id` stripped of non-digits
+3. `tierLabel` — `T1 - Urgente` / `T2 - Alto valor` / `T3 - Calificado` / `T4 - Captura`, derived from `PRIORITY_BY_TARGET[handoffTarget]`
+4. `summaryTextTemplate` — wizard's `handoff_summary_lines` (or legacy real-estate fields) flattened to one line with ` · ` separator
+
+**Meta restrictions that bit us** (document for future tenants):
+
+- **#132018 — `Param text cannot have new-line/tab characters or more than 4 consecutive spaces`**: template parameters reject `\n`, `\t`, and runs of 4+ spaces. The original `summaryLines.join('\n')` failed. Fix: collapse to a single line with ` · ` separators (only inside the template branch; the text-mode fallback keeps the multiline version).
+- **#132005 — `Translated text too long. Length of the parameters and the template text is N, which exceeds the allowed length of M`**: the header is capped at **60 chars total** (template text + resolved parameters). Including emojis and variation selectors. Our original `headerByTarget[target] + ' — ' + brandName` hit 61 chars for some target/brand combos. Fix: drop the brand from the header parameter (it's already in the footer); the header is just the target-specific label.
+
+**Per-tenant onboarding to template mode**:
+
+1. Create the template in Meta Business Suite under the tenant's WABA — Business Settings → WhatsApp Accounts → <tenant> → Message Templates → Create Template. Paste the structure above. Submit for review.
+2. Wait for Meta approval (24-72h, often faster). Status changes from `In review` → `Approved` in the templates list.
+3. Add to the tenant's `/opt/n8n/<tenant>/.env`:
+   ```
+   META_HANDOFF_TEMPLATE_NAME=handoff_notification
+   META_HANDOFF_TEMPLATE_LANG=es_AR
+   ```
+4. Add to the tenant's `/opt/n8n/<tenant>/docker-compose.yml` (the `environment:` whitelist on the `n8n` service):
+   ```yaml
+   META_HANDOFF_TEMPLATE_NAME: ${META_HANDOFF_TEMPLATE_NAME}
+   META_HANDOFF_TEMPLATE_LANG: ${META_HANDOFF_TEMPLATE_LANG}
+   ```
+5. `docker-compose up -d --force-recreate n8n` to pick up the new env vars (a plain `restart` does NOT re-read `.env`).
+6. Smoke test: trigger a real handoff. If the recipient hasn't messaged the business in 24h and the message still arrives, template mode is working.
+
+**Plec's deployment** (live since 2026-05-29) is the reference for the pattern. Scripts that automate the persister patch and snapshot sync live in `C:\Desarollo\jperez\plecarquitectos\Plec Automation\scripts\`:
+
+- `patch-persister-template.mjs` — REST PUT the live persister (`Prepare Handoff WA Notification` jsCode + `Send Handoff WA Notification` jsonBody). Clone + change `N8N_BASE` + `WORKFLOW_ID` per tenant.
+- `sync-persister-snapshot.mjs` — copy the Code+HTTP node config from the live persister to the engine repo snapshot. Run after any persister change to keep `whatsapp-automation-claude/v2-persist-session-and-logs.json` aligned.
+
+### 7. Validator false positives to ignore
 
 `n8n_validate_workflow` from n8n-mcp has known false positives — don't panic:
 
