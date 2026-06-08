@@ -16,16 +16,20 @@ and the per-agency onboarding pipeline.
 ```
 automation-platform/
 ├── SKILL.md                              ← skill manifest (frontmatter + index)
-└── references/
-    ├── stack-overview.md                 ← the four repos and how they fit
-    ├── postgres-schema.md                ← session_memory / lead_log / escalations / inventory
-    ├── whatsapp-automation.md            ← n8n router + wizards + post-deploy wiring
-    ├── dashboard.md                      ← Next.js multi-tenant dashboard
-    ├── meta-tech-provider.md             ← embedded signup + webhook activation
-    ├── reference-instance.md             ← Bot Argento (real-estate, live tenant)
-    ├── vps-deployment.md                 ← Hostinger VM, Traefik, per-tenant compose
-    ├── new-vertical-playbook.md          ← step-by-step recipe for onboarding an agency
-    └── tenants-status.md                 ← live state of each tenant in the pipeline
+├── references/
+│   ├── stack-overview.md                 ← the four repos and how they fit
+│   ├── postgres-schema.md                ← session_memory / lead_log / escalations / inventory
+│   ├── whatsapp-automation.md            ← n8n router + wizards + post-deploy wiring
+│   ├── dashboard.md                      ← Next.js multi-tenant dashboard
+│   ├── meta-tech-provider.md             ← embedded signup + webhook activation
+│   ├── reference-instance.md             ← Bot Argento (real-estate, live tenant)
+│   ├── vps-deployment.md                 ← Hostinger VM, Traefik, per-tenant compose
+│   ├── new-vertical-playbook.md          ← step-by-step recipe for onboarding an agency
+│   ├── outbound-sales.md                 ← Bot Argento Sales (cold outreach add-on)
+│   ├── botargento-scraping.md            ← lead-sourcing leg: web → validated wa_id → outreach
+│   └── tenants-status.md                 ← live state of each tenant in the pipeline
+└── scripts/
+    └── botargento-scraping/              ← scraper + AR phone classifier + checknumber.ai validator (wa.me fallback) + CSV emitter
 ```
 
 ## How Claude Code discovers it
