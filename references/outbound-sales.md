@@ -91,6 +91,16 @@ and the whole reply flow dies. Extracting the visible **text** (not just payload
 `No me interesa` button match the `no me interesa` opt-out token. This makes the button label double
 as the opt-out, so the template footer can drop "Respondé PARA…".
 
+## Launching a campaign (the sell flow)
+
+Step-by-step runbook: `bot-argento-sales/Sales Automation/docs/ventas/campaign-runbook.md`. The data
+model in one line: **one `campaigns` row per campaign + one `recipients` row per prospect** (the
+recipient row is a `pending→sent→…→replied` state machine, mutated in place — never one row per
+message). Flow: build CSV (`wa_id,business_name,contact_name,vertical,source,opt_in_basis`) →
+`seed-recipients.mjs --campaign <id>` (refuses rows w/o `opt_in_basis`) → `INSERT outreach.campaigns`
+(create `paused`) → `status='active'` → runner sends under cap/window → watch `quality_rating`, ramp
+30–50/day → `status='paused'` kill switch.
+
 ## Scripts
 
 `build.mjs` (targets `ventas` / `campaign-runner` / `router`), `import-n8n.mjs`,
