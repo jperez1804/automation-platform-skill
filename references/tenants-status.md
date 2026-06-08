@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | `client1` | real-estate | **Live** (dashboard refresh PRs 1→13.1 deployed 2026-06-01 — same image as Plec) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-06-01 | See `reference-instance.md` + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
-| `bot-argento-sales` | outbound-sales | **Scaffolding** (repo generated locally 2026-06-04; not yet on VPS, no WABA) | `ventas.botargento.com.ar` (n8n) | 2026-06-04 | See §Bot Argento Sales below |
+| `bot-argento-sales` | outbound-sales | **Containers provisioned** (n8n + Postgres + TLS live on VPS 2026-06-05; no WABA yet) | `ventas.botargento.com.ar` (n8n) | 2026-06-05 | See §Bot Argento Sales below |
 
 ## Client1 dashboard refresh — 2026-06-01
 
@@ -48,6 +48,11 @@ The refresh's design was multi-tenant + theme-driven by construction — `#3b82f
 **Migrations applied at boot**: dashboard container entrypoint ran `pnpm db:migrate` (3 files already applied: `0000_init.sql`, `0001_escalation_type.sql`, `0002_app_settings.sql`) and `pnpm db:verify-views` (7/7 required `automation.v_*` present).
 
 **Smoke test passed 2026-06-01** by user: Panel KPIs, charts rank palette, /handoffs strip + table, /conversations row-as-Link, /conversations/[waId] thread (post PR 13.1 fix — thread on the wide column, rail on the 300 px), /follow-up tonal pills, /settings brand picker contrast meter, dark mode toggle.
+
+**WABA topology (confirmed 2026-06-05):** client1's production number is `+54 9 11 2558-9302` on WABA
+**BotArgento2 (`912244891288296`)**, app subscription `override_callback_uri → client1.botargento.com.ar`.
+A second app (**Manychat**) is also subscribed to that WABA — legacy, candidate for cleanup. Don't add
+other tenants' numbers to this WABA: overrides are per-WABA.
 
 **Pending for client1** (intentional, no client request yet):
 - Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.
@@ -210,7 +215,7 @@ Total sub-opciones: **17**. T1 ⚡ ≈ 59% (Opción 1.* + 3.* + 4.*) · T2 ⭐ �
 
 ## Bot Argento Sales
 
-**Stage:** Scaffolding — the **outbound** companion to the inbound platform (the mirror image: it
+**Stage:** Containers provisioned — the **outbound** companion to the inbound platform (the mirror image: it
 cold-messages prospects with a Meta template that earns a reply, then the existing router + a `ventas`
 pitch wizard qualify them in-window and hand off to Jonatan). Architecture + the Phase-B add-on recipe
 live in `outbound-sales.md`. Dual purpose: Phase A = Jonatan's own client acquisition; Phase B = sold
@@ -235,14 +240,118 @@ to clients as an "outbound campaigns" add-on dropped into their existing tenant.
   `session_memory` seed (TTL-proof); no `patch-persister-template.mjs` (copied persister already
   template-capable).
 
+### Updated 2026-06-05 (VPS tenant provisioned)
+
+- ✅ DNS A `ventas.botargento.com.ar` → `187.127.6.44`. **Zone lives at HostMar (`ns3/ns4.hostmar.com`)
+  — the Hostinger MCP DNS tools return an empty zone for `botargento.com.ar`; records are managed in
+  the HostMar panel.**
+- ✅ `/opt/n8n/ventas/` provisioned (compose + `.env` mode 0600 + `postgres-setup.sql`).
+- ✅ Containers `n8n-ventas` (n8nio/n8n:2.4.7) + `n8n-ventas-postgres` (postgres:16) up, healthy.
+- ✅ TLS LE issued for `https://ventas.botargento.com.ar/`, valid → 2026-09-03. First ACME attempt
+  failed (DNS not propagated at start) and stuck in Traefik's in-memory backoff — fixed with
+  `docker restart traefik` (~3 s blip; plec + client1 verified healthy after).
+- ✅ Schemas applied: `automation.*` (7 tables + 7 views) + `outreach.*` (campaigns/recipients/suppression).
+- ✅ `ventas` appended to `/opt/scripts/tenants.txt` (safe: `update-dashboards.sh` skips tenants
+  without `dashboard.compose.yml`).
+- ⚠️ **Root access lesson:** `deploy` has no sudo and `/opt/n8n/` is root-owned. Hostinger MCP
+  key-attach does NOT apply live to an existing VM; the working path is `VPS_setRootPasswordV1`
+  (applies live) + password SSH as root. Rotated password stored in
+  `…\Sales Automation\handoff\vps-root-access.md` (gitignored).
+- ⏸️ n8n owner account not created yet (n8n 2.x owner wizard at first visit).
+- ⏸️ `.env` placeholders pending: `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `SALES_CALENDAR_URL`,
+  `VENTAS_WHATSAPP_NUMBER`.
+
+### Updated 2026-06-05 (later session — import + wire complete)
+
+- ✅ n8n owner account created by Jonatan; API key issued (stored in `…\Sales Automation\handoff\n8n-api-key.txt`).
+- ✅ `VENTAS_WHATSAPP_NUMBER=5491121911850` set in `.env` (local + VPS) + container recreated.
+- ✅ All 6 workflows imported via `import-n8n.mjs` (manifest persisted).
+- ✅ **New helper `scripts/wire-n8n.mjs`** (REST-based, idempotent, no MCP needed — improvement over
+  Plec's manual MCP wiring): creates the `Postgres Ventas` credential (`SMuNLLXrMffqrFyw`) and
+  attaches it to all 12 Postgres nodes, wires the router's 3 executeWorkflow ids from the import
+  manifest. Credential id persisted in `scripts/wire-manifest.json` (gitignored). Reusable for
+  Phase-B client deployments.
+- ✅ Error handler set as `settings.errorWorkflow` on the other 5 workflows (`set-error-workflow.mjs`).
+- ✅ Verified via API: 0 Postgres nodes missing credentials, 0 unwired executeWorkflow nodes, all
+  workflows **inactive by design** (router activates at WABA go-live; campaign-runner with the first campaign).
+- 📘 **n8n 2.x public-API credential gotcha:** POST `/credentials` for type `postgres` requires
+  `sshTunnel: false` to be present and the `ssh*` fields to be ABSENT (conditional allOf schema —
+  including them errors with "prohibited type").
+
+### Updated 2026-06-05 (third session — WABA creds live, TEST number)
+
+- ✅ Jonatan completed embedded signup + activated ("published") all workflows.
+- ✅ `META_VERIFY_TOKEN` rotated to Jonatan's value; webhook GET handshake verified live (200 +
+  challenge echo at `/webhook/whatsapp/meta`).
+- ✅ `META_ACCESS_TOKEN` + `META_PHONE_NUMBER_ID=1146399881891574` set + container recreated; token
+  smoke-tested against Graph API.
+- 🟡 **The onboarded number is a Meta TEST number** (`+1 555-990-2333`): max 5 pre-verified
+  recipients, quality `UNKNOWN`. Good for E2E dev; a real dedicated AR number is REQUIRED before the
+  first cold campaign. Token may be short-lived (verify ~24h later; durable = Tech Provider backend token).
+- 🐛 **Smoke-test bug found+fixed**: rubro button label 'Arquitectura / Estudio' (22 chars) →
+  Graph API `(#131009) Parameter value is not valid`. **Meta interactive button titles hard-cap at
+  20 chars** (add to the #132018/#132005 list of Meta limits). Shortened to 'Arquitectura', all other
+  labels audited ≤20, patched live via `patch-wizard-live.mjs ventas`.
+- ⏸️ **Smoke test blocked mid-flow by Meta** `(#131037) needs display name approval`:
+  `name_status=PENDING_REVIEW` for display name "Automatizaciones de Jonatan Perez" (set at
+  onboarding). ALL sends blocked until Meta approves (intro/rubro/hoy went out before enforcement
+  kicked in; wizard logic itself verified working through 3 steps).
+- 📌 **Decision (2026-06-05): abandon the test number** — Jonatan will register a **real dedicated
+  sales number** instead (avoids display-name review on a throwaway + the 5-recipient cap, and is
+  required for campaigns anyway).
+- ⚠️ **Near-miss (2026-06-05):** Jonatan first added the new number (`+54 9 11 2558-9239`,
+  phone_number_id `1139408332586305`, `name_status=APPROVED`, `status=PENDING` because nobody called
+  `/register`) to WABA **BotArgento2 (`912244891288296`)** — but that WABA hosts **client1's
+  PRODUCTION number** (`+54 9 11 2558-9302`, quality Alta) and its app subscription has
+  `override_callback_uri → client1.botargento.com.ar`. **Webhook overrides are per-WABA, not
+  per-number** — repointing it would have broken client1 live. Compliance rule #1 (dedicated sales
+  WABA) exists for exactly this. Also noted: **Manychat** is a second subscribed app on BotArgento2
+  (legacy? candidate for cleanup).
+- 📌 ~~Resolution: Option A (fresh WABA via embedded signup)~~ → **Actual resolution (2026-06-07):**
+  Jonatan moved -9239 in Business Manager onto the existing **dedicated sales WABA**
+  ("Automatizaciones de Jonatan Perez" `3920862298209294`, override already → ventas n8n, only the
+  BotArgento app subscribed). Claude registered it manually via Graph
+  `POST /{phone_number_id}/register` (the step Business-Manager-added numbers always lack).
+- ✅ **Real sales number LIVE (2026-06-07):** `+54 9 11 2558-9239`, phone_number_id
+  **`1189088647624468`** (changed from `1139408332586305` — **phone_number_id is per-WABA**; it
+  changes when a number moves WABA). `status=CONNECTED`, `name_status=APPROVED`,
+  `quality_rating=GREEN`. Two-step PIN set at registration → stored in
+  `…\Sales Automation\handoff\waba-sales-number.md`. `META_PHONE_NUMBER_ID` swapped in `.env`
+  (local + VPS) + container recreated.
+
+### Updated 2026-06-07 (smoke test PASSED + templates submitted)
+
+- ✅ **Full-flow smoke test passed on the real number** (intro→rubro→hoy→demo).
+- ✅ Copy tweak: dropped the social-proof line from the intro greeting (rebuilt + live-patched).
+- ✅ **Both templates created via Graph API** (`POST /{waba_id}/message_templates`) under the sales
+  WABA, status `PENDING`: `handoff_notification` (Utility, `27499304549724179`, header {{1}} +
+  4 body params, buttonless) + `outreach_intro` (Marketing, `1882014265822175`, 2 body params +
+  opt-out footer).
+- 📘 **New Meta gotcha:** template URL buttons may NOT contain WhatsApp deep links (`wa.me`) —
+  error subcode `2388081` "No se permiten los enlaces directos a WhatsApp en los botones". Ventas'
+  handoff template is therefore buttonless (body text `wa.me/{{2}}` is clickable anyway); the
+  persister's `Prepare Handoff WA Notification` node was patched (local + live) to drop the button
+  component. **Engine TODO:** make the button component env-conditional in
+  `whatsapp-automation-claude`'s persister so buttonless tenants don't need a hand-patch.
+- ✅ **Both templates APPROVED same day** (2026-06-07). `SALES_CALENDAR_URL` set (Google appointment
+  schedule) + container recreated.
+- ✅ **E2E handoff test PASSED (2026-06-07 13:01)**: lead from a third number ran
+  intro→rubro→hoy→demo, got the calendar link, escalation row written
+  (`ventas_demo_requested`), and the `handoff_notification` template landed on Jonatan's WhatsApp
+  with all params rendered. **The inbound half of Bot Argento Sales is operational.**
+- Note: handoff priority renders T3 (persister `PRIORITY_BY_TARGET` has no `ventas` entry → default
+  3). Optional tweak: map `ventas → 1` to badge demo-requests as T1 ⚡.
+- Pending (outbound half): remove test number `+1 555-990-2333` from the WABA → first campaign
+  (`outreach.campaigns` row, architecture vertical, `template_name=outreach_intro`, `daily_cap=40` →
+  seed recipients CSV with `opt_in_basis` via `seed-recipients.mjs` → activate `v2-campaign-runner`,
+  ramp 30–50/day, watch quality rating).
+
 ### Pending (next sessions)
 
-1. **Provision VPS tenant** — `/opt/n8n/ventas/` (rsync compose + .env), apply `postgres-setup.sql`,
-   add `ventas` to `/opt/scripts/tenants.txt`, TLS.
-2. **Sales WABA onboarding** — embedded signup via Tech Provider backend; set `META_*`; webhook
-   override → `https://ventas.botargento.com.ar/webhook/whatsapp/meta`.
-3. **Import + wire** — `import-n8n.mjs` → MCP-wire executeWorkflow ids + Postgres credential (Read
-   Recipient, Read Pending Batch, Mark Sent, Insert Suppression, router DB nodes) + `set-error-workflow.mjs`.
+1. ~~**Provision VPS tenant**~~ — done 2026-06-05 (see above).
+2. ~~**Sales WABA onboarding**~~ — done 2026-06-05 with a TEST number 🟡; swap to the real dedicated
+   sales number + long-lived token before campaign go-live.
+3. ~~**Import + wire**~~ — done 2026-06-05 (see above).
 4. **Templates** — submit `outreach_intro` (Marketing) + `handoff_notification` (Utility) under the
    sales WABA; set `META_HANDOFF_TEMPLATE_NAME` once approved.
 5. **First campaign** — `outreach.campaigns` row (architecture vertical), seed recipients, ramp 30–50/day.
