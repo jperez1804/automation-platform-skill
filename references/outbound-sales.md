@@ -59,15 +59,37 @@ under `daily_cap`, small batch per tick. **Kill switch:** `outreach.campaigns.st
 
 `Trigger → Read Recipient (Postgres lookup by wa_id) → Run Wizard Step`. Same `finalize()` contract
 as inbound wizards. Steps: `intro` (greet + 1-line pitch + social proof) → `rubro` (skipped if the
-campaign vertical is known) → `hoy` (how they handle WhatsApp today) → `demo` → handoff
+campaign vertical is known) → `hoy` (how they handle WhatsApp today) → showcase handoff
 (`intent='ventas_lead'`, `handoff_target='ventas'` → `VENTAS_WHATSAPP_NUMBER` = Jonatan, template
 mode). Personalization via the `Read Recipient` node is **TTL-proof** (doesn't depend on
 `session_memory`, which expires at 30 min).
+
+**UX revision (2026-06-08):** the `intro` re-ask is **skipped** for campaign prospects (a
+`Read Recipient` row exists) or affirmative entries — tapping the cold template's `Ver ejemplo`
+goes straight to `hoy` instead of re-asking "¿te muestro?". The old `demo` Sí/Después step is gone:
+after `hoy`, `buildShowcaseHandoff` sends an **in-window `cta_url` interactive message** (free — no
+template billing) showing Jonatan's live demo bots (wa.me links) + an **Agendar Demo** URL button,
+and fires the handoff **immediately** (auto-alert: a URL button can't call back to the bot, so
+reaching the showcase = the qualified-lead trigger). To carry an arbitrary Meta payload to the
+prospect, the wizard's `finalize()` emits `wa_message` and the **shared sender** got a generic
+passthrough branch (`$json.wa_message` sent verbatim, else the buttons/text ternary) — backwards
+compatible, worth upstreaming. cta_url URL buttons may point at a calendar (unlike *template* URL
+buttons, which forbid wa.me — subcode 2388081).
 
 Router (`_src/router-determine-route.js`): no numbered menu — everything → ventas wizard, except
 unambiguous opt-out tokens (`PARA`/`BAJA`/`STOP`/`cancelar`/`no me interesa`/...) → `optout` → router
 writes `outreach.suppression` + confirms. (Bare "no" is intentionally NOT an opt-out token — it's a
 valid wizard answer.)
+
+**Quick-reply template buttons (2026-06-08):** if the cold template uses quick-reply buttons (e.g.
+`Ver ejemplo` / `No me interesa`) instead of a "Respondé SÍ/PARA" text CTA, taps arrive as
+`message.type === 'button'` (`button.text`/`button.payload`) — a DIFFERENT webhook shape from the
+`interactive`→`button_reply` that the wizard's own buttons emit. The router's **Normalize Event**
+node (templated inside `scripts/wizards/build.mjs`, not in `_src/`) must have the `type:'button'`
+branch that extracts `button.text` into `text_body`; without it taps fall through to `unsupported`
+and the whole reply flow dies. Extracting the visible **text** (not just payload) is what lets the
+`No me interesa` button match the `no me interesa` opt-out token. This makes the button label double
+as the opt-out, so the template footer can drop "Respondé PARA…".
 
 ## Scripts
 
@@ -75,6 +97,20 @@ valid wizard answer.)
 `set-error-workflow.mjs`, `patch-wizard-live.mjs` (manifest-based, no hardcoded ids), and
 `seed-recipients.mjs` (CSV → SQL emitter; **refuses rows without `opt_in_basis`**). No
 `patch-persister-template.mjs` — the copied persister is already template-capable.
+
+## Recipient sourcing (botargento-scraping)
+
+Where the recipients come from. The **botargento-scraping** module (see
+`references/botargento-scraping.md`) is the front of this funnel: via the scrapling MCP it scrapes
+business directories (Cylex), enriches with Google Maps, classifies AR phones (drops landlines —
+only mobiles can have WhatsApp), and **validates presence via checknumber.ai** (definitive
+`yes/no`; min batch 100; key in env `CHECKNUMBER_API_KEY`). It emits the exact seeder CSV
+`wa_id,business_name,contact_name,vertical,source,opt_in_basis`, keeping only `whatsapp=yes` rows,
+with **`opt_in_basis` left blank on purpose** — so `seed-recipients.mjs` forces a deliberate,
+defensible basis per batch before anything sends. (`contact_name` is blank unless enriched by an
+optional free wa.me name-pass — checknumber returns no name.) Discipline: send only validated
+`yes` numbers (fewer failed sends → protects the quality rating) and feed the ramped runner, never
+a bulk blast. The module only writes a CSV — never `automation.*` (invariant #1 holds).
 
 ## Compliance — the rules that keep the WABA alive
 

@@ -13,7 +13,7 @@ This skill puts you in full context of the **vertical-agnostic WhatsApp automati
 
 Everything else — n8n workflows, Postgres `automation` schema, Next.js dashboard, Hono Meta backend, Hostinger VPS topology, deploy pipeline — is shared.
 
-**Outbound companion.** The platform now also has an **outbound** sibling — **Bot Argento Sales** — the mirror image of the inbound engine: it cold-messages prospects with a Meta template that earns a reply, then the existing router + a pitch wizard qualify them in-window. Built first as Jonatan's own client-acquisition tool, and designed to be **sold to clients as an "outbound campaigns" add-on**. See `references/outbound-sales.md`.
+**Outbound companion.** The platform now also has an **outbound** sibling — **Bot Argento Sales** — the mirror image of the inbound engine: it cold-messages prospects with a Meta template that earns a reply, then the existing router + a pitch wizard qualify them in-window. Built first as Jonatan's own client-acquisition tool, and designed to be **sold to clients as an "outbound campaigns" add-on**. See `references/outbound-sales.md`. The **front of that funnel** is the **botargento-scraping** module — it scrapes prospect numbers from the public web, validates which are real WhatsApp accounts, and emits the CSV that seeds `outreach.recipients`. See `references/botargento-scraping.md`.
 
 ## The four pillars
 
@@ -40,6 +40,7 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Onboarding a new agency / new vertical — step-by-step | `references/new-vertical-playbook.md` |
 | Per-tenant onboarding state — who's at which pipeline stage (`client1`, `plec`, …) | `references/tenants-status.md` |
 | Outbound sales / cold-outreach campaigns, opt-in & ban-avoidance rules, the campaign runner, the `outreach.*` schema, the sellable add-on | `references/outbound-sales.md` |
+| Sourcing/scraping prospect WhatsApp numbers from the web (the lead-gen leg that feeds outbound) — scrapling MCP, Cylex/Google Maps, AR phone classification, checknumber.ai validation, the seed-ready CSV | `references/botargento-scraping.md` |
 
 ## n8n MCP cross-references
 
