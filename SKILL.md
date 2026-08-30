@@ -42,6 +42,24 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Outbound sales / cold-outreach campaigns, opt-in & ban-avoidance rules, the campaign runner, the `outreach.*` schema, the sellable add-on | `references/outbound-sales.md` |
 | Sourcing/scraping prospect WhatsApp numbers from the web (the lead-gen leg that feeds outbound) — scrapling MCP, Cylex/Google Maps, AR phone classification, checknumber.ai validation, the seed-ready CSV | `references/botargento-scraping.md` |
 
+## Agents
+
+Four named subagents live in `agents/` of this skill and are exposed **globally** through the
+junction `~/.claude/agents` → `~/.claude/skills/automation-platform/agents`, so they are available
+from any project/session (each new client is a new working directory). Invoke by name
+("usá el agente `campaign-ops`…") or let Claude pick them from their descriptions. Each agent loads
+its own references — the caller does not need to have this skill loaded.
+
+| Agent | Use it for | Writes? |
+|---|---|---|
+| `campaign-ops` | Outbound campaign status, funnel reports, queue/cap questions, recipient lookups | No — SELECT only, proposes SQL |
+| `dashboard-deployer` | Ship the shared dashboard image to ONE tenant (selective commit → CI → `docker-compose --env-file` → smoke) | Yes, scoped to the named tenant |
+| `n8n-deployer` | `_src` → `build.mjs` → `patch-wizard-live.mjs`, router/wizard/runner patches, n8n API gotchas | Yes, in-place patch of existing workflow ids |
+| `tenant-onboarder` | New client: workspace scaffold, discovery notes, proposal (structured-menu mockups + pricing), Meta checklist, `tenants-status.md` | Yes, only in the agency workspace + tenants-status |
+
+Edit the `.md` files in `agents/` (they are versioned with this repo); the junction makes the change
+visible immediately. Don't put agents anywhere else.
+
 ## n8n MCP cross-references
 
 When the work involves writing or editing n8n workflows, also consult these `n8n-mcp-skills` skills (they cover n8n mechanics; this skill covers the platform's specific use of those mechanics):
