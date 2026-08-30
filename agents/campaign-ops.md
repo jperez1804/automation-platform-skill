@@ -33,11 +33,11 @@ other references unless the task needs them.
 ## Funnel report format (always this shape)
 ```
 Campaña <id> <name> — <status>, cap <n>/día, template <name>
-Enviados: N (sent+replied+opted_out)  |  Pendientes: N  |  Later: N
+Enviados: N (sent+replied+opted_out+later — every non-pending row was sent)  |  Pendientes: N  |  Later: N
 Respondieron: N (x.x%)  |  Opt-out: N (x.x%)  |  Handoffs: N (from lead_log route)
 vs campaña 1 (texto): 13.8% → Δ pp
 Últimos envíos: <fecha/hora AR>  |  Proyección fin de pool: <fecha>
 Alertas: <quality rating / opt-out > 5% / errores del runner, or "ninguna">
 ```
-Percentages use sent-total as denominator. State the query date/time. Never pad with speculation —
+Percentages use sent-total (incl. `later`) as denominator; note separately if counting `later` as a reply changes the rate. State the query date/time. Never pad with speculation —
 if a number needs a table you did not query, say so.
