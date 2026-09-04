@@ -33,7 +33,7 @@ import urllib.request
 import urllib.error
 
 API_BASE = "https://api.checknumber.ai/v1"
-MIN_BATCH = 100
+MIN_BATCH = 500  # checknumber raised the per-job floor from 100 to 500 (2026-07-01)
 
 
 def die(m):

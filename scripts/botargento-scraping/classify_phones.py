@@ -42,11 +42,15 @@ def classify(ph):
         wa = "549" + "11" + sub if conf in ("Alta", "Media") and len(sub) == 8 else ""
         return conf, wa
 
-    # provincial: 0<area><subscriber>
-    if has15:
-        area = re.match(r"0(\d+)", d).group(1)
-        sub = d[1 + len(area):].replace("15", "", 1)
-        return "Media", "549" + area + sub
+    # provincial: 0<area> [15-]<subscriber>. The area code is the FIRST TOKEN;
+    # a greedy `0(\d+)` regex on the full digit string swallows the whole
+    # number (bug found 2026-07-31 on "0351 15-323-2993").
+    if d.startswith("0") and has15:
+        area = toks[0].lstrip("0")
+        i = toks.index("15")
+        sub = "".join(re.sub(r"\D", "", t) for t in toks[i + 1:])
+        if area and sub:
+            return "Media", "549" + area + sub
     return "Desconocida", ""
 
 
@@ -61,6 +65,7 @@ if __name__ == "__main__":
         ("011 2276-8374",    "Media", "5491122768374"),   # 011 starting 2
         ("011 4244-3667",    "No (fijo)", ""),            # landline
         ("03467 63-7758",    "Desconocida", ""),          # provincial, no 15
+        ("0351 15-323-2993", "Media", "5493513232993"),   # provincial WITH 15
     ]
     ok = True
     for ph, ec, ew in tests:
