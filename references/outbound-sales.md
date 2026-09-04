@@ -30,9 +30,24 @@ in-window replies are free).
 | `v2-persist-session-and-logs.json` (already dual-mode template handoff) | `v2-campaign-runner.json` (the outbound workflow) |
 | `v2-error-handler.json` | `v2-ventas-wizard.json` (the pitch; self-sales-specific) |
 | router skeleton (verify/normalize/dedup/lock/session) | router opt-out branch → `outreach.suppression` |
+| | `v2-quality-poll.json` (Graph→`outreach.quality_log`, every 6 h) |
+| | `v2-outreach-reconcile.json` (funnel state from `lead_log`+`suppression`, every 5 min) |
+| | read-only dashboard `campaignsTab` (see `dashboard.md`) |
 
-No shared-engine edits: the campaign-runner sends templates via its **own** HTTP node, so the shared
-sender stays generic.
+The shared sender stays generic — but gained one **backwards-compatible** branch: a `wa_message`
+passthrough (send a full Meta payload verbatim if present, else the buttons/text ternary), so the
+ventas wizard can emit the in-window `cta_url` showcase. Worth upstreaming.
+
+**Live state (verified 2026-07-30):** infra fully operational — real sales number
+(`+54 9 11 2558-9239`), templates approved, dashboard live (`dashboard.ventas.botargento.com.ar`),
+all 8 workflows ACTIVE, quality GREEN. The **first real campaign** (`arquitectura-zonasur-2026-06`,
+87 architecture studios, 15/day) ran 2026-06-11 → 2026-06-19 and **finished: 12 replied (13.8%),
+4 opted out, 71 no-reply**. A 1-recipient demo campaign (2026-06-21) converted **Tasty** into a live
+Phase-B tenant. Since then the runner is active but **starved (0 pending recipients)** — Phase A did
+its job and effort moved to Phase-B client tenants (Tasty, ArtBox, Arka). Inbound still works
+organically (leads through 2026-07-25).
+**Note:** the campaign-runner must be **activated** (its schedule) for hands-off daily sending — manual
+`Execute workflow` only fires once.
 
 ## `outreach.*` schema (honors invariant #1)
 
@@ -101,12 +116,33 @@ message). Flow: build CSV (`wa_id,business_name,contact_name,vertical,source,opt
 (create `paused`) → `status='active'` → runner sends under cap/window → watch `quality_rating`, ramp
 30–50/day → `status='paused'` kill switch.
 
+## Funnel reconciliation (`v2-outreach-reconcile.json`, 2026-06-10)
+
+**The gap it fills:** a prospect's reply flows through the shared engine into `automation.lead_log` /
+`session_memory`, but **nothing was updating `outreach.recipients.status` to `replied`** — so the
+dashboard funnel (reply rate, "Respondieron") sat at 0 even after real replies. Rather than surgery on
+the live router, a small **scheduled reconciler** (every 5 min) derives the terminal funnel states from
+the source-of-truth tables: `replied` = recipient still `sent/delivered/read` with an inbound
+`lead_log` row at/after `last_send_at`; `opted_out` = recipient whose `wa_id` is in
+`outreach.suppression`. Idempotent, no params, no router risk; ~5-min lag (fine for an observability
+dashboard). Standalone workflow like the quality poll — imported/wired/activated via the same scripts.
+(`sent → delivered → read` still need Meta status webhooks, which remain deferred.)
+
 ## Scripts
 
-`build.mjs` (targets `ventas` / `campaign-runner` / `router`), `import-n8n.mjs`,
-`set-error-workflow.mjs`, `patch-wizard-live.mjs` (manifest-based, no hardcoded ids), and
-`seed-recipients.mjs` (CSV → SQL emitter; **refuses rows without `opt_in_basis`**). No
-`patch-persister-template.mjs` — the copied persister is already template-capable.
+`build.mjs` (targets `ventas` / `campaign-runner` / `router`), `import-n8n.mjs` (idempotent; ORDER list
+includes quality-poll + reconcile), `wire-n8n.mjs` (REST: creates the `Postgres Ventas` credential +
+attaches to all Postgres nodes + wires the router's executeWorkflow ids — replaces manual MCP wiring;
+n8n 2.x credential gotcha: `sshTunnel:false` present, `ssh*` fields ABSENT), `set-error-workflow.mjs`,
+`patch-wizard-live.mjs` (manifest-based, no hardcoded ids; patches a Code node in place without
+re-import — structural changes like a new node still need re-import or a manual PUT),
+`seed-recipients.mjs` (CSV → SQL; **refuses rows without `opt_in_basis`**), and `set-opt-in-basis.mjs`
+(stamps one defensible basis onto a scraped CSV before seeding). No `patch-persister-template.mjs` — the
+copied persister is already template-capable.
+
+**Activation gotcha:** importing/wiring does NOT activate a workflow. The schedule-triggered ones
+(`campaign-runner`, `quality-poll`, `outreach-reconcile`) and the `router` must be POSTed to
+`/workflows/<id>/activate` (or toggled in the UI) or they never fire on their own.
 
 ## Recipient sourcing (botargento-scraping)
 
@@ -150,5 +186,7 @@ swaps the pitch wizard + template + brand env vars.
 
 ## Status
 
-See `references/tenants-status.md` → **Bot Argento Sales**. As of 2026-06-04: **scaffolded locally,
-not yet on the VPS, no WABA**.
+See `references/tenants-status.md` → **Bot Argento Sales** (state lives there; this file is
+architecture). As of 2026-07-30: **live, Phase A complete, outbound idle** — campaign 1 finished
+2026-06-19 (12/87 replied), no new campaign seeded since; inbound half + dashboard operational.
+Proposed next feature: two-way inbox (`Sales Automation/docs/ventas/two-way-inbox-plan.md`, not started).

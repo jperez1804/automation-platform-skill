@@ -39,6 +39,28 @@ This is the operational layer **all agencies share**. Every tenant's dashboard +
 - Per-tenant compose pins Traefik labels for hostname routing — `dashboard.<clientN>.botargento.com.ar` resolves to that tenant's container.
 - These hardcoded names (`traefik-public`, `letsencrypt`) are baked into the generated compose files.
 
+## DNS — Cloudflare (since 2026-06-10)
+
+The `botargento.com.ar` zone is on **Cloudflare (free plan)** — authoritative NS
+`julissa.ns.cloudflare.com` / `mark.ns.cloudflare.com`, delegated at **nic.ar** (the `.com.ar`
+registry). **All records are DNS-only (grey cloud)** — Cloudflare is pure authoritative DNS, nothing
+proxied (proxying would break Traefik's LE TLS-ALPN/HTTP-01 challenge and the mail/FTP records). Add a
+new tenant subdomain by creating an A record `→ 187.127.6.44` in Cloudflare (any depth, e.g.
+`dashboard.<tenant>` — unlimited, free).
+
+- **Why moved:** the old DonWeb/ferozo reseller plan (NS `ns3/ns4.hostmar.com`) **capped subdomains at
+  5** and the cap wasn't liftable (DonWeb only offered a ~$112k ARS Cloud-Server upsell — declined). At
+  2 subdomains/tenant that capped the whole platform at ~2 agencies. Cloudflare removes it permanently.
+- **Email + root site stay on DonWeb** (`200.58.111.90`); Cloudflare just resolves them. The zone
+  carries the email records (MX `mail`/`mx1`, SPF `include:spf.hostmar.com`, DKIM `mail._domainkey`,
+  DMARC) **plus the Resend records** (`resend._domainkey`, `send` MX/TXT) that power dashboard
+  magic-link auth — losing any breaks email/login.
+- **Migration gotchas (for the next zone):** Cloudflare's auto-scan imports common names (mail/www/ftp)
+  but **silently skips custom subdomains** — add the VPS tenant records by hand or they go dark on
+  cutover; it defaults every record to **Proxied (orange)** — flip all to **DNS only**.
+- The **Hostinger MCP does NOT manage this zone** (it never did — the registrar/DNS is DonWeb→Cloudflare,
+  not Hostinger). Ignore the MCP for `botargento.com.ar` DNS; use the Cloudflare dashboard.
+
 ## CI/CD pipeline
 
 GitHub Actions workflows in the dashboard repo:
@@ -63,10 +85,10 @@ The Hostinger MCP cannot do container ops on this VM:
   ```
   [VPS:2044] Currently installed operating system does not support Docker Manager
   ```
-- The MCP **can** do: VM lifecycle (start/stop/recreate), firewall management, snapshots, DNS.
-- The MCP **cannot** do: docker exec, docker logs, container listing, container restart, anything that needs Docker Manager.
+- The MCP **can** do: VM lifecycle (start/stop/recreate), firewall management, snapshots.
+- The MCP **cannot** do: docker exec, docker logs, container listing, container restart, anything that needs Docker Manager. It also does **NOT** manage `botargento.com.ar` DNS — that zone is on **Cloudflare** (see the DNS section above), not Hostinger.
 
-**Practical implication:** for anything inside containers (running SQL queries against `n8n-client1-postgres`, restarting a tenant container, tailing logs, exec'ing a shell), **SSH is mandatory** — use `ssh vps` and run docker commands there. The MCP is useful only for VM-level ops, DNS, and firewall.
+**Practical implication:** for anything inside containers (running SQL queries against `n8n-client1-postgres`, restarting a tenant container, tailing logs, exec'ing a shell), **SSH is mandatory** — use `ssh vps` and run docker commands there. The MCP is useful only for VM-level ops (lifecycle/firewall/snapshots). For DNS, use the Cloudflare dashboard.
 
 ## Three deploy gotchas (check these first when Deploy misbehaves)
 
