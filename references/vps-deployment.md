@@ -204,6 +204,18 @@ ssh vps 'docker inspect client1-dashboard --format "{{range .Config.Env}}{{print
 ssh vps 'df -h /'
 ```
 
+The engine's Postgres role is `n8n` on database `n8n` (`docker exec -i n8n-<tenant>-postgres psql -U n8n -d n8n`); `dashboard_app` is the dashboard's read-only role.
+
+## Running VPS ops from Claude Code (learned 2026-09-15, client1)
+
+- **Permission:** the auto-mode classifier denies `ssh vps` (even reads) as production access unless the user allows `Bash(ssh vps:*)`. That rule grants reads **and writes on every tenant** — suggest removing it after the job. If denied, say so; don't work around it.
+- **SQL with quotes:** send the whole remote script over stdin — `ssh vps 'bash -s' <<'REMOTE' … REMOTE` — instead of nesting `'\''` escapes (a misplaced quote silently shifts the whole command). For parallel `psql` calls, write results to `mktemp -d` files and `wait`.
+- **Test DDL for real, then undo:** pipe `BEGIN;` + the DDL + test statements + `ROLLBACK;` into `psql -v ON_ERROR_STOP=1`. Schema, table and function creation all roll back. If psql dies mid-transaction the connection closes and everything rolls back too — confirm with a `pg_namespace` query.
+- **Secrets into `.env`:** never on a command line. `ssh vps '… IFS= read -r K || [ -n "$K" ] …' < keyfile` — without `|| [ -n "$K" ]`, a key file with no trailing newline makes `read` fail and `set -e` exits silently. Back up to `.env.bak.<ts>` first, rewrite only the one line with shell builtins (`printf`, not `awk -v`, so the key never appears in `ps`), then compare `sha256sum` of the local file and `printf %s "$VAR"` inside the container.
+- **`.env` permissions:** client1's `.env` was `664` (world-readable); set to `600` with its backups on 2026-09-15. Check other tenants.
+- **Reload env vars:** `cd /opt/n8n/<tenant> && docker-compose up -d --no-deps --force-recreate --wait n8n`. `--no-deps` keeps Postgres and the dashboard from being recreated; `--wait` returns once healthy. Expect a few seconds of 502 on the public URL.
+- **Test an API key from inside the container** rather than keeping it on the laptop: `ssh vps 'docker exec -i n8n-<tenant> node --input-type=module' <<'EOF' … EOF` reads `process.env` and prints only the HTTP status. OpenAI `429 insufficient_quota / credit_balance_exhausted` means the key is valid but the org has no prepaid credits.
+
 ## What lives on this VPS vs not
 
 **On this VPS:**

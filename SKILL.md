@@ -41,6 +41,7 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Per-tenant onboarding state — who's at which pipeline stage (`client1`, `plec`, …) | `references/tenants-status.md` |
 | Outbound sales / cold-outreach campaigns, opt-in & ban-avoidance rules, the campaign runner, the `outreach.*` schema, the sellable add-on | `references/outbound-sales.md` |
 | Sourcing/scraping prospect WhatsApp numbers from the web (the lead-gen leg that feeds outbound) — scrapling MCP, Cylex/Google Maps, AR phone classification, checknumber.ai validation, the seed-ready CSV | `references/botargento-scraping.md` |
+| Engine upgrades shipped 2026-09 (post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists), **porting them to another tenant**, the tenant-config deployer (`patch-tenant-live.mjs` + `tenants.json`) | `references/whatsapp-automation.md` §Conversational upgrades, then `whatsapp-automation-claude/PORTING-conversational-upgrades.md` |
 
 ## Agents
 
@@ -54,7 +55,7 @@ its own references — the caller does not need to have this skill loaded.
 |---|---|---|
 | `campaign-ops` | Outbound campaign status, funnel reports, queue/cap questions, recipient lookups | No — SELECT only, proposes SQL |
 | `dashboard-deployer` | Ship the shared dashboard image to ONE tenant (selective commit → CI → `docker-compose --env-file` → smoke) | Yes, scoped to the named tenant |
-| `n8n-deployer` | `_src` → `build.mjs` → `patch-wizard-live.mjs`, router/wizard/runner patches, n8n API gotchas | Yes, in-place patch of existing workflow ids |
+| `n8n-deployer` | Per-agency `_src` → `build.mjs` → `patch-wizard-live.mjs`; engine repo `patch-tenant-live.mjs <tenant> <target>` (`tenants.json`; structural router upgrades — audio, grouping, post-handoff window — and porting them); router/wizard/runner patches, n8n API gotchas | Yes, in-place patch of existing workflow ids (structural targets insert nodes; never re-import) |
 | `tenant-onboarder` | New client: workspace scaffold, discovery notes, proposal (structured-menu mockups + pricing), Meta checklist, `tenants-status.md` | Yes, only in the agency workspace + tenants-status |
 
 Edit the `.md` files in `agents/` (they are versioned with this repo); the junction makes the change

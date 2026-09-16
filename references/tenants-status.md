@@ -16,13 +16,30 @@
 
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
-| `client1` | real-estate | **Live** (dashboard refresh PRs 1→13.1 deployed 2026-06-01 — same image as Plec) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-06-01 | See `reference-instance.md` + §Client1 dashboard refresh below |
+| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-16 | See `reference-instance.md` + §Client1 engine upgrades + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
 | `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
 | `tasty` | outbound-sales (growshops) | **Live** — campaign 3 `growshops-amba-2026-07` ACTIVE since 2026-07-12 (419 recipients, cap 15/day) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-07-12 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
 | `arka` | outbound-sales (clínicas · **España**) | **Live — REAL CAMPAIGN ACTIVE** (`clinicas-barcelona-2026-09`: 277 seeded, cap 15/day, window 10–12 Madrid L–V, first sends Mon 2026-09-07; flow v3 Veámoslo; all 8 workflows ACTIVE) | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
 | `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
+
+## Client1 engine upgrades — 2026-09-15 / 16
+
+First tenant with the conversational upgrades (POC — Jonatan wants every functionality here before porting). Client1 has no `_src` workspace: the engine repo `whatsapp-automation-claude` is its source of truth. Runbooks and rollback ids: `MIGRATION-*-client1.md` and `_client1_backup/_versions.txt` in that repo; architecture in `whatsapp-automation.md` §Conversational upgrades.
+
+| Date | Delivery | Router versionId | Persister versionId |
+|---|---|---|---|
+| 2026-09-15 | Post-handoff window | `06938789-1734…` | `7d408179-cca2…` |
+| 2026-09-15 | Voice-note transcription | `13e80f2f-7905…` | `c1c57a06-be0a…` |
+| 2026-09-15 | Burst grouping (+ `runtime` schema DDL) | `6e2ed6b0-28de…` | `88cbf3dd-88ae…` |
+| 2026-09-15 | Spoken answers to option lists (smoke-test fix) | `2349373c-eaf5…` | — |
+| 2026-09-16 | Deployer refactored to `patch-tenant-live.mjs` + `tenants.json` (no live change) | — | — |
+
+- **Env / VPS 2026-09-15:** `OPENAI_API_KEY` rotated in `/opt/n8n/client1/.env` (the previous keys had been exposed on Bitbucket; Jonatan inactivated all old keys). The first transcription call returned `429 credit_balance_exhausted` until the OpenAI org was topped up. `n8n-client1` recreated with `--no-deps`. `.env` and its backups chmod `600` (was `664`).
+- **Smoke test (real WhatsApp, 2026-09-15):** transcription correct, but "Tres habitaciones", "Quiero hablar con un asesor" and "Me gustaría un departamento" were rejected by the wizards → fixed the same day with sentence → option resolution in `Determine Route`. **Retest of that fix pending**, plus smoke tests for burst grouping and the post-handoff window.
+- **Traffic reality:** a 30-day `lead_log` check showed 4 contacts and 0 real bursts (all quick follow-ups came after a bot reply). Grouping shipped for completeness of the POC, not demand.
+- **Deploy/verify:** `node scripts/patch-tenant-live.mjs client1 <target>`; `verify` = 35 checks.
 
 ## Client1 dashboard refresh — 2026-06-01
 
@@ -59,7 +76,7 @@ A second app (**Manychat**) is also subscribed to that WABA — legacy, candidat
 other tenants' numbers to this WABA: overrides are per-WABA.
 
 **Pending for client1** (intentional, no client request yet):
-- Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.
+- ~~Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.~~ **Outdated (noted 2026-09-16):** client1's live persister sends handoff notifications with the `handoff_notification` template. The 2026-09 follow-up notifications were built on template mode and had to respect its body rules (Meta #132018: no newlines in body parameters, header ≤ 60 chars).
 
 ---
 

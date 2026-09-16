@@ -113,18 +113,33 @@ flowchart TD
 
 ## Execution order (per inbound message)
 
+Steps marked **[2026-09]** are the conversational upgrades — live on client1, not yet on other
+tenants (see §Conversational upgrades below).
+
 ```
 1.  POST /whatsapp/meta fires (Meta webhook)
 2.  Respond immediately with onReceived (don't keep Meta waiting)
 3.  Normalize event — extract text_body, contact_wa_id, message_id, profile_name, message_type
+    [2026-09] + media_id, media_mime_type, is_voice for media (audio stays event_kind 'unsupported')
 4.  Check for duplicate (direction='inbound', message_id) in automation.lead_log
     — if found, short-circuit and exit (idempotency)
+4b. [2026-09] Burst buffer, BEFORE the lock: Peek Session → Plan Buffering → Should Buffer?
+    — buffer: Buffer Inbound (runtime.inbound_buffer) → wait 4 s → Consume Buffer
+      (runtime.consume_inbound_buffer) → Build Grouped Inbound; no rows = another execution
+      answers the group, this one ends quietly
+    — bypass (inside a flow, or a message complete on its own, or any buffer DB error): Bypass Buffer
+    — both converge on Inbound Ready
 5.  Acquire Postgres advisory lock on hash(contact_wa_id)
     — guarantees serialized processing per contact
 6.  Load session from automation.session_memory by contact_wa_id
     — apply SESSION_MEMORY_TTL_MS (default 30 min) — if stale, treat as new session
+6b. [2026-09] Voice note → Is Audio? → Get Media Meta → Size OK? → Download Media → Fix Binary Name
+    → Audio Format OK? → Transcribe (OpenAI) → Resolve Inbound. Every false branch and HTTP error
+    output also lands in Resolve Inbound (exactly one item, lock always released).
 7.  Determine menu selection or resume guided flow
     — main menu 0-5 / admin / restart
+    — [2026-09] post-handoff window (24 h): acknowledge + forward to the advisor instead of the menu
+    — [2026-09] resolve a sentence against the options on screen ("tres habitaciones" → key 3)
 8.  Call appropriate child workflow with { session, normalized_event }
 9.  Child returns shared contract:
     {
@@ -139,14 +154,45 @@ flowchart TD
       matched_listings:         array (optional, from inventory wizard),
       should_update_session:    boolean (false for read-only turns)
     }
+9b. [2026-09] Decorate Reply — prepend "🎤 Escuché: «…»" when a voice note was answered at a
+    free-text step or in the post-handoff window
 10. Call v2-send-whatsapp-message — POST to Meta with reply_text, capture outbound_message_id
+10b. [2026-09] Attach Inbound Context — re-add transcript + absorbed_messages (wizards drop unknown fields)
 11. Call v2-persist-session-and-logs:
     — upsert session_memory (if should_update_session)
+      [2026-09] a handoff stamps last_handoff_at / last_handoff_target / followup_notifications
     — insert lead_log (inbound row)
+      [2026-09] one row per absorbed message of a burst; a transcript is logged as the text
     — insert lead_log (outbound row) with related_message_id linking back
     — if handoff: insert escalations row + send SMTP alert
+      [2026-09] handoff_followup: WhatsApp notification only ("💬 Mensaje adicional del lead"),
+      no escalation row, no email
 12. Release advisory lock
 ```
+
+## Conversational upgrades (2026-09, live on client1)
+
+Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS/` in the engine repo), and **meant to be ported to every tenant**. Procedure: `whatsapp-automation-claude/PORTING-conversational-upgrades.md`. History and rollback ids: `MIGRATION-handoff-followup-client1.md`, `MIGRATION-audio-client1.md`, `MIGRATION-burst-grouping-client1.md`, `_client1_backup/_versions.txt`.
+
+| Upgrade | Behaviour | Cost / requirement |
+|---|---|---|
+| **Post-handoff window** | For 24 h after a handoff, a new message gets "Recibido 👍 …" and is forwarded to the advisor (max 5 notifications per handoff). Acknowledgements ("gracias", "ok 👍") get a reply without paging. `0`, a button or a bare `1`–`6` leave the window. Survives the 30-min session TTL. Logged as `route: handoff_followup`, `handoff: false`, so dashboard handoff rates don't move. | none |
+| **Voice-note transcription** | Voice notes are transcribed (`gpt-4o-mini-transcribe`, `language=es`) inside the per-contact lock and routed like text. Unusable audio (too long, silent, hallucination, any API error) → "No pude entender tu audio", step kept. | `OPENAI_API_KEY` **with prepaid credits**; voice notes are processed by OpenAI (tenant privacy notice) |
+| **Sentence → option resolution** | When a wizard shows a list, `Determine Route` matches the message against the `guided_options` labels (spelled numbers → digits, longest label wins); a lone number counts only when every other word is filler. "tres habitaciones" → 3, "quiero hablar con un asesor" → the advisor option, "Tres de Febrero" stays a zone. Typed text benefits too. | wizards store `guided_options: [{key,label,value}]` |
+| **Burst grouping** | Outside an active flow each message waits 4 s and the newest answers the group: joined text, with restart words and option numbers checked on the last message and keywords on the whole group. Options, restart words, buttons and media close a group at once; max hold 15 s. One `lead_log` inbound row per WhatsApp message. | 4 s on the first reply outside a flow; `runtime` schema (see `postgres-schema.md`) |
+
+**Design rules that made it work** — each one fixed a real bug:
+- Transcribe **inside** the lock. Download + transcription takes 2–6 s; before the lock, a voice note and a typed "2" are processed out of order.
+- Audio stays `unsupported` until a transcript exists; otherwise an empty text reaches a free-text step and hands off an empty request.
+- Wizards rebuild their output field by field, so anything added before routing is re-attached after the sender.
+- Wizards accept only a number or an exact label, so sentence matching lives once in `Determine Route` instead of in each wizard. **This was caught by the real-WhatsApp smoke test, not by unit tests** — always smoke-test voice answers at option steps.
+- Normalize spoken numbers only against options on screen, or the barrio "Once" becomes option 11.
+- The buffer's Postgres nodes send errors to `Bypass Buffer`: a DB problem degrades to one-by-one processing, never to dropped messages.
+- n8n's Postgres node emits `{success: true}` for a zero-row result, so "nothing absorbed" is detected by inspecting rows.
+
+**Wizard contract requirements added** (check before porting): option steps store `guided_options: [{key, label, value}]`, free-text steps store `guided_options: []`, and a handoff leaves `guided_step: 'handoff'`.
+
+**Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
 
 ## Wizard pattern (the part you'll copy per vertical)
 
@@ -290,7 +336,7 @@ This is why the dashboard's `escalations` queries filter on `escalation_type` to
 3. Build upsert SQL keyed on composite PK `(listing_id, source_sheet)`.
 4. Execute against Postgres `automation.inventory`.
 
-**Tech debt:** the inventory wizard still reads Sheets at runtime instead of `automation.inventory`. The sync table is populated but unused by the runtime path. Ideal refactor swaps wizard reads to Postgres for resilience + speed.
+**Tech debt:** ~~the inventory wizard still reads Sheets at runtime instead of `automation.inventory`. The sync table is populated but unused by the runtime path.~~ **Resolved on client1 2026-09-11:** the wizard's `Read Inventory` is a Postgres node on `automation.inventory` (with `use_type` for vivienda/comercial). Tenants cloned from older exports may still read Sheets — check that node's type before assuming.
 
 ## Required environment variables
 
@@ -316,7 +362,11 @@ The n8n instance needs these. Names are stable across agencies; **values are per
 - `<UPPER>_WHATSAPP_NUMBER` — per-team internal notification numbers, one per `handoff_target`. **Generic convention since the 2026-05-22 persister patch**: the persister derives the env var name from `handoff_target` itself by uppercasing and replacing non-alphanumeric with underscore, then appending `_WHATSAPP_NUMBER`. So adding a new vertical with handoff targets like `architect` / `technical` / `municipal` just needs those env vars set — no code change required. Examples currently in use:
   - Real estate: `VALUATIONS_WHATSAPP_NUMBER`, `QUESTIONS_WHATSAPP_NUMBER`, `OWNERS_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `RENTS_WHATSAPP_NUMBER`
   - Architecture (Plec): `ARCHITECT_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `TECHNICAL_WHATSAPP_NUMBER`, `MUNICIPAL_WHATSAPP_NUMBER`, `DEVELOPMENT_WHATSAPP_NUMBER`, `PURCHASING_WHATSAPP_NUMBER`, `HR_WHATSAPP_NUMBER`
-- `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4o-mini`), `AI_CONFIDENCE_THRESHOLD` (default `0.6`) — wired but **not used** in v2 wizards (planned for "Otras Consultas" AI triage)
+- `OPENAI_API_KEY` — **used since 2026-09 for voice-note transcription** (client1; the OpenAI org needs prepaid credits, otherwise `429 credit_balance_exhausted`). Without the key, audio keeps the text-only reply. `OPENAI_MODEL` (default `gpt-4o-mini`) and `AI_CONFIDENCE_THRESHOLD` (default `0.6`) are still wired but **not used** in v2 wizards (planned for "Otras Consultas" AI triage)
+- **2026-09 conversational upgrades** — all optional, defaults live in code (`$env.X || default`), so no compose change unless overriding:
+  - `OPENAI_TRANSCRIBE_MODEL` (`gpt-4o-mini-transcribe`), `AUDIO_TRANSCRIPTION_ENABLED` (on; `false` is the kill switch), `AUDIO_MAX_BYTES` (2 MB), `AUDIO_TRANSCRIBE_PROMPT` (built-in real-estate vocabulary — tune per vertical)
+  - `HANDOFF_FOLLOWUP_WINDOW_MS` (24 h), `HANDOFF_FOLLOWUP_MAX_NOTIFICATIONS` (5)
+  - `INBOUND_DEBOUNCE_MS` (4000; `0` disables grouping), `INBOUND_MAX_HOLD_MS` (15000)
 
 **Sheet ID:** in current real-estate code, hardcoded as `REAL_ESTATE_SHEET_ID=1u4YkqBlPSN6UrUW_ra4hYWuRzEj8fxNp3xqWjjV1-LY` in n8n's variables. Per-tenant: each tenant has their own Sheet ID + their own Google OAuth credential.
 
