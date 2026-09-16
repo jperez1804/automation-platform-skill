@@ -96,6 +96,31 @@ unambiguous opt-out tokens (`PARA`/`BAJA`/`STOP`/`cancelar`/`no me interesa`/...
 writes `outreach.suppression` + confirms. (Bare "no" is intentionally NOT an opt-out token — it's a
 valid wizard answer.)
 
+**⚠ Two field lessons from Arka's first real campaign day (2026-09-09, wa_id 34669365849 "FiMov"):**
+
+1. **Exact-token opt-out matching is not enough.** A human wrote *"Que no nos interesa"* — no token
+   matched (`no me interesa` ≠ `no nos interesa`) and the wizard re-asked the pitch question at
+   someone who had just said no. Fix (deployed on arka, apply to every outbound tenant): after the
+   exact-token check, add a **regex fallback for negative-interest phrasings** — e.g.
+   `/\bno\b.{0,20}\binteres\w*/` (covers "no me/nos interesa", "no estamos interesados", leading
+   "que...") and `/\bno\b[,.\s]{0,3}gracias\b/`. Bias toward suppression on ambiguity: compliance
+   rule #3 says suppression is absolute — a false-positive opt-out is safer than messaging a no.
+   Bare "no" must still NOT opt out.
+2. **Clinics/SMBs run their own WhatsApp auto-responders → bot-vs-bot loops.** FiMov's booking bot
+   auto-replied to the template; our wizard treated it as engagement, and each "No he entendido"
+   re-ask triggered another canned auto-reply — **13 identical round-trips in ~2 minutes**. Any
+   naive re-ask branch will loop against an auto-responder. Fix (deployed on arka): a
+   **consecutive-miss guard** (`guided_misses` in the qualification snapshot) — miss 1 re-asks,
+   miss 2 sends one final polite message re-showing the option buttons and parks the session in a
+   `dormant` step, where unrecognized input produces **no outbound at all** (inbound still logged)
+   and any valid option/affirmative resumes the script and resets the counter. Also note the
+   auto-reply signature for triage: inbound arriving seconds after template delivery with long
+   canned text ("Gracias por contactar...", horario, etc.) is a machine, not a reply.
+3. **Ops: multi-statement `psql -c` is one implicit transaction.** `psql -c "INSERT; UPDATE;
+   DELETE"` rolls back EVERYTHING if any statement errors — even after printing `INSERT 0 1`.
+   A manual suppression "applied" this way silently vanished when a later statement failed.
+   Run critical writes as separate `-c` calls (or explicit BEGIN/COMMIT) and re-SELECT to verify.
+
 **Quick-reply template buttons (2026-06-08):** if the cold template uses quick-reply buttons (e.g.
 `Ver ejemplo` / `No me interesa`) instead of a "Respondé SÍ/PARA" text CTA, taps arrive as
 `message.type === 'button'` (`button.text`/`button.payload`) — a DIFFERENT webhook shape from the
@@ -157,6 +182,35 @@ defensible basis per batch before anything sends. (`contact_name` is blank unles
 optional free wa.me name-pass — checknumber returns no name.) Discipline: send only validated
 `yes` numbers (fewer failed sends → protects the quality rating) and feed the ramped runner, never
 a bulk blast. The module only writes a CSV — never `automation.*` (invariant #1 holds).
+
+## Provider mode + Chatwoot mirror (first built for arka, 2026-09-16)
+
+Some clients want **our Meta infrastructure but their own inbox**. The pattern (reusable for any
+tenant; Chatwoot is the first consumer, any API-channel helpdesk works the same):
+
+- **Router flag `<TENANT>_CONVERSATION_MODE=chatwoot|bot`**: in `chatwoot` mode every inbound
+  except opt-out becomes `direct({ rt:'', suppressSend:true, route:'chatwoot_mirror' })` — the
+  `suppress_send` plumbing (sender bypass + persister inbound-only row) makes the bot silent while
+  `lead_log`/reconciler/dashboard keep working; first inbound without a fresh session row sets
+  `handoff:true, handoff_target:'ventas'` so the existing T1 WA+email alert fires once. Opt-out
+  stays ours (compliance) and is mirrored too.
+- **Mirror sub-workflow** (`v2-chatwoot-bridge`): search/create contact by phone → reuse the
+  inbox conversation with `status !== 'resolved'` → create message `incoming`/`outgoing`, always
+  with `content_attributes: { mirror:'botargento', kind, wa_message_id }`. Called fire-and-forget
+  (`waitForSubWorkflow:false`, `continueOnFail`) as a **second output** of Determine Route (router,
+  placed BELOW the main chain so the advisory lock releases first) and of Send Template (runner;
+  `mirror_text` rendered from a local `TEMPLATE_BODIES` map — Meta never returns the rendered body).
+- **Return path** (`v2-chatwoot-webhook`): Chatwoot API-channel inbox `webhook_url` =
+  `https://<tenant>/webhook/chatwoot?token=<secret>` (Chatwoot can't sign or set headers — query
+  token, fail closed). Filter `message_created` · `outgoing` · `!private` · `inbox.id` match ·
+  **no mirror marker** (else our own outbound mirrors echo back as sends) → `POST /webhook/inbox
+  {action:'send'}` (reuses 24h-window 409, Meta 502, `sent_by='human'` logging) → on failure post a
+  **private note** into the conversation so the agent knows it didn't go out.
+- 📘 n8n 2.x refuses to PUT a workflow referencing an unpublished sub-workflow — activate the
+  bridge before patching router/runner. 📘 Setting the inbox webhook: `PATCH
+  /api/v1/accounts/{a}/inboxes/{i} {channel:{webhook_url}}`.
+- Known v1 limits: media both ways is a text placeholder; reopening after 24h needs a template
+  (not exposed in Chatwoot yet); the T1 alert header is per-tenant hardcoded in the persister.
 
 ## Compliance — the rules that keep the WABA alive
 

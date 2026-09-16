@@ -21,8 +21,9 @@
 | `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
 | `tasty` | outbound-sales (growshops) | **Live** — campaign 3 `growshops-amba-2026-07` ACTIVE since 2026-07-12 (419 recipients, cap 15/day) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-07-12 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
-| `arka` | outbound-sales (clínicas · **España**) | **Live — REAL CAMPAIGN ACTIVE** (`clinicas-barcelona-2026-09`: 277 seeded, cap 15/day, window 10–12 Madrid L–V, first sends Mon 2026-09-07; flow v3 Veámoslo; all 8 workflows ACTIVE) | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
+| `arka` | outbound-sales (clínicas · **España**) — **provider mode + Chatwoot mirror since 2026-09-16** (bot OFF, `ARKA_CONVERSATION_MODE=chatwoot`) | **Live** — campaign 5 `clinicas-barcelona-2026-09` **paused by client** (277 seeded, 45 touched, cap 15/day, 10–12 Madrid); test campaign 6 `test-chatwoot-2num` running; 12/12 workflows ACTIVE | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
 | `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
+| `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — PENDIENTE** (workspace scaffoldeado; `discovery.md` (comercial) + `flujo-checklist.md` (bot opción por opción) sin responder, `propuesta.md` borrador v0 con placeholders, `meta-checklist.md`; **sin datos del cliente aún; nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-09 | See §Miguelez Propiedades below |
 
 ## Client1 engine upgrades — 2026-09-15 / 16
 
@@ -665,11 +666,47 @@ own Voraldent dental-clinic case as social proof.
   `dff4119f` → `f1cbed82` (commit `69ecf86`), gates green, `--env-file` respected, migration
   `0004_inbox_read_state` applied, smoke tests pass, other tenants untouched, school-WIP preserved.
 
+### Updated 2026-09-09 — first-week incident + wizard/router hardening
+
+- **Incident (wa_id 34669365849, FiMov Les Corts, fisio):** the clinic's own WhatsApp
+  auto-responder replied to the template → wizard treated it as engagement → **bot-vs-bot loop**
+  (13 identical "No he entendido" re-asks in ~2 min). Later a human wrote *"Que no nos interesa"* —
+  the router's exact opt-out tokens didn't match it, wizard re-asked again. Number manually
+  suppressed same day (suppression row + recipient 52 → `opted_out`).
+- **Patches deployed** (n8n-deployer agent): router regex fallback for negative-interest opt-outs
+  (`/\bno\b.{0,20}\binteres\w*/`, "no gracias"), and a wizard **consecutive-miss guard**
+  (`guided_misses`: 1 re-ask → 1 final message with buttons → `dormant` step that stays silent on
+  unrecognized input, resumes on any valid option). Full write-up: `outbound-sales.md` §Router
+  field lessons — **apply both to every outbound tenant** (ventas/tasty/artbox still have the
+  naive versions).
+
+### Updated 2026-09-16 — "Meta provider" mode + Chatwoot mirror (bot OFF)
+
+- Client decision: Arka owns the conversation in **their Chatwoot** (`tasty-chatwoot.2pebut.easypanel.host`,
+  account 1, inbox 2 `Channel::Api`); we send templates, mirror both directions, alert on first
+  reply, keep opt-out/suppression. Campaign 5 paused by the client meanwhile. Test campaign 6
+  (`ecommerce_v11`, lang `es`, no header) with the 2 internal numbers.
+- Built (n8n-deployer, 12/12 ACTIVE): `v2-chatwoot-bridge` `Fkv348hOv4BxHUJL` (sub-workflow,
+  anti-echo marker `content_attributes.mirror='botargento'`), `v2-chatwoot-webhook`
+  `fVErzqE1JuH8awuk` (`/webhook/chatwoot?token=` → inbox `send` → private note on 409/502),
+  router `ARKA_CONVERSATION_MODE=chatwoot` (silent `suppress_send` + mirror + first-reply T1),
+  runner template mirror. Env whitelisted + container recreated. Pattern write-up:
+  `outbound-sales.md` §"Provider mode + Chatwoot mirror". Client guide:
+  `docs/ventas/chatwoot-guia-esteban.md`. Full log: `infra-status.md` 2026-09-16.
+- Backport docs for ventas/tasty (opt-out regex + anti-loop) still pending execution from their sessions.
+
 ### Pending (next sessions)
 
-1. Monday ≥10:05 Madrid: verify first sends (`sent` counts, no `failed`), quality stays GREEN,
-   replies flow `guided_arka_dolor → interes → handoff`, T1 alerts reach 34671286513.
-2. Week-1 review with Arka (reply rate, per-category split) → raise cap toward 30–50 if GREEN.
+0. Finish the Chatwoot E2E test with Jonatan + Esteban (template → mirror → reply → agent reply →
+   opt-out → 24h note), clean campaign 6, then Arka decides when to resume campaign 5
+   (`status='active'`, cap 15). v2 items: media attachments, templates from Chatwoot.
+1. Week-1 review with Arka (reply rate, per-category split) → raise cap toward 30–50 if GREEN.
+2. Backport opt-out regex + anti-loop guard — specs ready, execute from each tenant's session:
+   ventas (FULL backport: router+wizard+sender+persister, live-drift protocol inside) →
+   `bot-argento-sales\Sales Automation\docs\ventas\backport-2026-09-optout-antiloop.md`;
+   tasty (router regex ONLY — its button-wizard can't loop by design) →
+   `TastyLivingSoil\Tasty Automation\docs\ventas\backport-2026-09-optout-regex.md`.
+   artbox: not requested yet — same analysis needed (which wizard pattern does it use?).
 3. Later: 2nd checknumber batch (540 landlines + metro area), other cities (Madrid/València).
 
 ### References for Arka Systems
@@ -709,6 +746,78 @@ diarias por WhatsApp compite con la atención en mostrador.
   equipo. **Ese menú es el draft de intents del vertical `rental`.**
 - Próximo: Jonatan la envía → registrar fecha de envío acá para el follow-up. Si piden el
   demo pre-firma (CTA de la propuesta): wizard rental de 4-5 pasos en número de prueba.
+
+## Miguelez Propiedades
+
+**Stage:** Discovery — pendiente. Inmobiliaria, vertical **real-estate** (el mismo de
+`client1` — no hace falta vertical nuevo en el dashboard ni wizards nuevos: se reutilizan
+`v2-inventory-wizard` / `v2-tasaciones-wizard` / `v2-admin-propietarios` /
+`v2-otras-consultas` / `v2-emprendimientos`). Bot **inbound**.
+
+**Workspace:** `C:\Desarollo\jperez\miguelezpropiedades\Miguelez Automation\`
+(docs en `docs/miguelez/`).
+
+### Confirmed at session 2026-09-09 (scaffold + docs de discovery)
+
+- ✅ Workspace scaffoldeado (convención estándar; engine dirs = placeholders con README;
+  `.gitignore` del patrón Plec — `handoff/*` y `**/.env` ignorados).
+- ✅ `docs/miguelez/infra-status.md` — estado + tabla de datos faltantes + pendientes.
+- ~~✅ `docs/miguelez/discovery.md` — checklist de discovery inmobiliaria en 9 bloques (negocio,
+  dolor textual, canales/volumen, mix de operación, inventario, derivación, Meta/WABA, marca,
+  decisión).~~ Reestructurado el mismo día — ver entrada siguiente.
+- ✅ `docs/miguelez/propuesta.md` — **borrador v0** patrón Aurelio Ski: problema → solución →
+  mockups con el **flujo real de `client1`** (menú numerado 1 Ventas · 2 Alquileres ·
+  3 Tasaciones · 4 Emprendimientos · 5 Administración/Propietarios · 6 Otras consultas → wizard
+  zona → tipo → habitaciones → rango → resultados → botones Solicitar visita / Hablar con un
+  asesor / Nueva búsqueda → franja horaria; tasación 6 pasos) → ejemplo de notificación al
+  asesor → alcance → plan 3 semanas → **inversión default de plataforma (setup $0 ·
+  $100.000/mes · 1er mes $50.000, a confirmar por Jonatan)**. Placeholders `[[COMPLETAR]]`
+  donde faltan datos del cliente.
+- ✅ `docs/miguelez/meta-checklist.md` — checklist WABA completo (pre-requisitos → BM → embedded
+  signup vía backend Tech Provider → número → display name → verificación de negocio →
+  template handoff con botones byte-exactos → webhook override → prueba e2e → quality baseline).
+- Slug propuesto `miguelez`; es-AR; TZ AR (a confirmar según ciudad).
+- **No hay datos del cliente**: contacto, ciudad, volumen, inventario, Meta/WABA, número
+  actual — todo pendiente en `discovery.md`.
+
+### Confirmed at session 2026-09-09 (segunda sesión — checklist del flujo)
+
+- ✅ **Decisión de Jonatan: nada en el VPS todavía.** Primero se documenta con el cliente qué
+  flujo quiere; recién después se despliega.
+- ✅ `docs/miguelez/flujo-checklist.md` — **nuevo**. Relevamiento de la implementación real de
+  `client1` (router + 5 wizards `v2-*`) convertido en checklist Sí / No / Cambiar para recorrer
+  con el cliente opción por opción. Secciones: §0 comportamiento general (Leia, solo texto,
+  sesión 30 min, "0" = menú, botones ≤3 opciones, franjas 9-12 / 12-14 / 14-18, handoff por
+  email, sin IA libre) · §1 menú principal (6 opciones) · §2 Ventas/Alquileres (zona → tipo →
+  habitaciones → rango → top 3 → visita/asesor/nueva búsqueda → franja) · §3 Tasaciones
+  (7 pasos) · §4 Emprendimientos · §5 Administración/Propietarios · §6 Otras consultas ·
+  §7 derivaciones (cantidad de asesores, número compartido o por asesor, WhatsApp vs email,
+  email de alertas, tabla quién recibe cada área) · §8 inventario (Tokko/Zonaprop/Sheets,
+  exportación CSV/API/XML, cantidad, campos mínimos, frecuencia) · §9 Meta/WABA (BM, verificación,
+  FB/IG, WABA previa, migrar número vs nuevo, display name) · resultado de la reunión.
+  Cada pregunta lleva el copy exacto que manda el bot hoy.
+- ✅ `docs/miguelez/discovery.md` — **reducido a lo comercial** (6 secciones: negocio, dolor,
+  canales/volumen, mix de operación, marca y tono, decisión y timing). Inventario, derivación,
+  Meta/WABA y asesores se movieron a `flujo-checklist.md` para no duplicar; queda una nota
+  cruzada.
+- Método acordado para la reunión: **hablar en vivo con el checklist en mano**, que el cliente
+  pruebe el bot de Bot Argento desde su celular, y cerrar mandándole por WhatsApp el resumen de
+  lo acordado (ese resumen es el spec del wizard).
+- Decisiones que más cambian el trabajo y conviene cerrar primero: (a) qué opciones del menú
+  apagan (Emprendimientos / Administración suelen sobrar), (b) dónde está el inventario y si se
+  exporta, (c) quién recibe cada derivación y si quieren aviso por WhatsApp al asesor (**no
+  existe hoy**), (d) preguntas nuevas en el wizard (ambientes, cochera, mascotas, presupuesto
+  libre) = desarrollo, no configuración.
+
+### Pending (next sessions)
+
+1. **Jonatan** — reunión/llamada de discovery con Miguelez usando `discovery.md` (comercial) +
+   `flujo-checklist.md` (bot opción por opción) (follow-up sugerido: **2026-09-16**).
+2. Con discovery cerrado: volcar el resultado de `flujo-checklist.md` (menú final, copy, preguntas
+   nuevas) en `propuesta.md`, completar placeholders, confirmar pricing → render HTML + PDF →
+   **Jonatan envía**. Si pidieron preguntas fuera del engine actual, cotizar aparte.
+3. Al firmar: DNS `miguelez` → `n8n-deployer` (tenant `miguelez`, vertical `real-estate`,
+   sync de inventario según sistema del cliente) → `dashboard-deployer` → `meta-checklist.md`.
 
 ## How to add a new tenant to this file
 
