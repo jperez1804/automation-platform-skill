@@ -105,11 +105,14 @@ Step 4 first — don't pay to confirm a fijo. Use
   + `task_type="ws"`, header `X-API-Key`) → `task_id`; `POST /gettasks` (form `task_id`) until
   `status="exported"` → download `result_url` (a **.zip** containing `all.csv` with columns
   `number,activated`=yes/no, plus `activated.txt`/`unregistered.txt`).
-- **Minimum batch = 500 numbers per job (as of 2026-07-01).** checknumber raised the floor from
-  100 to **500** — a sub-500 job is rejected pre-billing with
-  `{"error":"invalid_batch_size", ..."only N compliant numbers remain for ws, which is less than the
-  minimum 500"}` (dupes/invalids don't count toward the 500). Accumulate ≥500 real mobile candidates
-  before validating (or `--pad`, which now wastes far more — avoid).
+- **Minimum batch is NOT a reliable hard floor — re-verify with a direct API call before assuming
+  it blocks a small job.** Documented as 500 as of 2026-07-01 (raised from 100), but a 165-number
+  job submitted 2026-09-16 (Arka Systems / Sevilla retail, client-supplied list) was accepted and
+  ran clean — no `invalid_batch_size` rejection. checknumber may have relaxed or removed the floor,
+  or it's inconsistent. **Don't trust `checknumber_validate.py`'s local `MIN_BATCH = 500` guard as
+  ground truth** — it dies before ever calling the API. If a pool is under 500 and the user wants to
+  submit anyway, try the real API directly (worst case is a pre-billing rejection, no charge) rather
+  than assuming it will fail or padding with `--pad` fillers.
 - **Billing is per 100-block (min 500) → submit the largest EXACT 100-multiple ≤ pool.** A 507-
   or 761-number job bills the next full block (600/800), so round the batch to an exact 100-multiple
   and fill the gap with REAL scraped numbers — a 761-pool should go as 800 with 39 fresh scrapes,
@@ -310,6 +313,14 @@ First non-AR market. Working reference: `ArkaSystems/` scripts (`parse_listings_
 - **RGPD framing for ES clients:** public B2B commercial contact data under legitimate interest
   (LOPDGDD art. 19); keep per-row `source`; `opt_in_basis` blank until deliberately set (same
   compliance gate as AR).
+
+### Field learnings — client-supplied list, no scraping (Arka Systems / Sevilla retail, 2026-09-16)
+First run where the module validated a list the **client compiled themselves** (`ArkaSystems/run_Esteban/2026-09-16.xlsx`, columns `nombre,categoria,direccion,poblacion,codigo_postal,provincia,telefono,whatsapp,whatsapp_origen`) rather than one sourced via Cylex/PA/Maps. New sub-vertical (Sevilla fashion/retail: tiendas de ropa, joyerías, mayoristas textiles) for Arka, distinct from the Barcelona clinics run.
+- **No scraping step needed** — go straight to dedup (by the pre-resolved `whatsapp` column, last-10-digit key) → checknumber. 173 rows → 165 unique (7 dupes were legit sister-listings/branches sharing one WhatsApp).
+- **checknumber's floor was NOT 500 here** — see the Step 5 note above; 165 submitted clean.
+- **Hit rate 91.5%** (151/165, or 158/173 counting duplicate rows) — far above any prior AR/ES run. Cause: the client had already pre-filtered to likely-WhatsApp numbers (`whatsapp_origen` = `maps-movil`/`link`/`contexto`/`web-vdrmota`, i.e. their own resolution pipeline), so this pool skips the "mobile vs landline" guesswork entirely — it's post-classification, not raw directory phones.
+- **`whatsapp` column occasionally disagreed with `telefono`** for `contexto`-origin rows (5/173, digits share no overlap) — plausible (owner's WhatsApp number ≠ published shop line) rather than corruption; validated each as given rather than second-guessing the client's own resolution.
+- Deliverables in `ArkaSystems/run_Esteban/`: `candidates_pool.csv` (165 unique), `wa_map_2026-09-16.csv`, `contactos_whatsapp_validados_2026-09-16.csv` (158 rows, original columns + `whatsapp_validado`), `audit_2026-09-16.csv` (all 173).
 
 ## Handoff to outbound (`seed-recipients.mjs` contract)
 The seed CSV header is **exactly** (order-independent, but use this order):
