@@ -13,6 +13,26 @@ Read `~/.claude/skills/automation-platform/references/whatsapp-automation.md` an
 `references/outbound-sales.md`. For n8n mechanics use the `n8n-mcp-skills:*` skills listed in the
 platform SKILL.md.
 
+## Before shipping any tenant: the hardening defaults
+
+Platform invariant #3. Read `references/whatsapp-automation.md` §Conversation hardening and confirm
+the tenant has: burst grouping (+ a standalone `Inbound Ready` if it has no audio chain), a
+`Determine Route` that reads **`Inbound Ready`** rather than `Normalize Event`, the `guided_misses` /
+`dormant` guard with the sender's `Check Suppress Send` switch, opt-out regex on top of the exact
+tokens, and a wizard that answers price intent and hands off free-text questions. Reference port:
+`bot-argento-sales/Sales Automation/scripts/burst/` — `burst-nodes.mjs` is the single source of the
+10 nodes, `patch-burst-router-live.mjs` does GET → patch → PUT with backup, state check, `$('…')`
+reference validation and a `versionId` guard, and `harness-burst.mjs` has 65 assertions.
+
+⚠ `build.mjs router` regenerates a tenant's `v2-meta-receive-router.json` **without** the burst
+nodes. That is safe only because `patch-wizard-live.mjs router` swaps `jsCode` alone; the topology
+lives in the live workflow and in `burst-nodes.mjs`. Never run `wire-n8n.mjs` on such a tenant, and
+refresh the workspace copy from the live router after a structural PUT.
+
+⚠ The router's `Acquire Advisory Lock` does **not** serialize concurrent executions (session-level
+`pg_advisory_lock` on a pooled connection is re-entrant, and `Release Advisory Lock` never runs).
+Don't trust it when reasoning about races; burst grouping is what covers it today.
+
 ## Two pipelines — pick by where the source of truth lives
 
 ### A. Per-agency workspace (`_src` → build → code swap)

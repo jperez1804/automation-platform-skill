@@ -42,6 +42,7 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Outbound sales / cold-outreach campaigns, opt-in & ban-avoidance rules, the campaign runner, the `outreach.*` schema, the sellable add-on | `references/outbound-sales.md` |
 | Sourcing/scraping prospect WhatsApp numbers from the web (the lead-gen leg that feeds outbound) — scrapling MCP, Cylex/Google Maps, AR phone classification, checknumber.ai validation, the seed-ready CSV | `references/botargento-scraping.md` |
 | Engine upgrades shipped 2026-09 (post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists), **porting them to another tenant**, the tenant-config deployer (`patch-tenant-live.mjs` + `tenants.json`) | `references/whatsapp-automation.md` §Conversational upgrades, then `whatsapp-automation-claude/PORTING-conversational-upgrades.md` |
+| **Defaults every new automation must ship with** — the advisory lock that doesn't serialize, burst grouping (+ the `Inbound Ready` contract), the anti-loop `dormant` guard and silent turns, never dead-ending a lead (price intent, free-text handoff), opt-out regex | `references/whatsapp-automation.md` §Conversation hardening |
 
 ## Agents
 
@@ -71,10 +72,11 @@ When the work involves writing or editing n8n workflows, also consult these `n8n
 - `n8n-mcp-skills:n8n-node-configuration` — operation-aware field configuration
 - `n8n-mcp-skills:n8n-mcp-tools-expert` — guidance for the n8n MCP itself
 
-## Two non-negotiable platform invariants
+## Three non-negotiable platform invariants
 
 1. **The `automation.*` Postgres schema is fixed across every agency.** Same DDL: `session_memory`, `lead_log`, `escalations`, `inventory`. New verticals add **views** (`automation.v_<vertical>_*`) on top, not new tables. The dashboard reads only views; the n8n router writes to the four base tables.
 2. **The dashboard never writes to `automation.*`.** Enforced at the DB-role level — `dashboard_app` user has SELECT-only on `automation.*`, full access to `dashboard.*`. Any attempt to insert/update/delete in `automation.*` from the dashboard is a bug.
+3. **No conversation may dead-end or loop.** Every tenant ships the hardening defaults in `references/whatsapp-automation.md` §Conversation hardening: burst grouping, the consecutive-miss `dormant` guard with silent turns, opt-out regex on top of exact tokens, and a wizard that answers price intent and hands off free-text questions instead of repeating the menu. A lead who asks something the script didn't anticipate must reach a human, never "No te entendí" twice.
 
 ## Per-agency artifacts directory (workspace convention)
 

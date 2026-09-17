@@ -79,7 +79,24 @@ campaign vertical is known) → `hoy` (how they handle WhatsApp today) → showc
 mode). Personalization via the `Read Recipient` node is **TTL-proof** (doesn't depend on
 `session_memory`, which expires at 30 min).
 
-**UX revision (2026-06-08):** the `intro` re-ask is **skipped** for campaign prospects (a
+**Flow v3 (2026-09, current).** Steps: `intro` → `rubro` (**always asked** — the campaign vertical
+no longer skips it) → `hoy` → `interes` (pain: "2 a 3 horas por día contestando lo mismo" + "un lead
+que espera más de 5 minutos se enfría", single «Veámoslo» button) → `oferta` (showcase + promo, reply
+button) → `handoff` (confirmation + web cta_url). **Handoff + email alert fire on the offer tap**,
+not when the showcase is shown. Plus the hardening defaults: `dormant` anti-loop guard,
+`guided_ventas_precio` (price answer + handoff) and `guided_ventas_consulta` (free-text handoff), and
+burst grouping. Meta button titles are capped at **20 chars** ("Estudio Arquitectura", "Quiero un mes
+gratis" are exactly 20).
+
+**Pricing ladder (2026-09-16).** The wizard quotes a ladder and hands off rather than a single
+number: Atención 100.000 · Atención + Audios 140.000 · Cierre 200.000 (adds follow-up of inquiries
+that didn't close) · a-medida from 300.000 (own-CRM integration) · Bot de Ventas +100.000 as an
+add-on. First month free, install included. For an inmobiliaria the outbound bot is the *add-on*,
+not the pitch — they want inbound + audio + follow-up + CRM. Keep `PRICE_TEXT` in `_src/ventas.js`
+and the landing (`BotArgentoLandingPageRepo`) in sync; they contradicted each other for a day
+("50 % OFF" vs "primer mes GRATIS").
+
+**UX revision (2026-06-08, superseded by v3 above):** the `intro` re-ask is **skipped** for campaign prospects (a
 `Read Recipient` row exists) or affirmative entries — tapping the cold template's `Ver ejemplo`
 goes straight to `hoy` instead of re-asking "¿te muestro?". The old `demo` Sí/Después step is gone:
 after `hoy`, `buildShowcaseHandoff` sends an **in-window `cta_url` interactive message** (free — no
@@ -116,7 +133,21 @@ valid wizard answer.)
    and any valid option/affirmative resumes the script and resets the counter. Also note the
    auto-reply signature for triage: inbound arriving seconds after template delivery with long
    canned text ("Gracias por contactar...", horario, etc.) is a machine, not a reply.
-3. **Ops: multi-statement `psql -c` is one implicit transaction.** `psql -c "INSERT; UPDATE;
+3. **The router's per-contact lock does not serialize, and auto-responders expose it.** Two messages
+   439 ms apart produced two identical replies on ventas (2026-09-17) and left `guided_misses` at 0,
+   so the miss guard never counted. `pg_advisory_lock` is session-scoped on a pooled connection
+   (re-entrant), and `Release Advisory Lock` never runs. The fix that works today is **burst
+   grouping** — every message waits ≥4 s before consuming. Full write-up and the rest of the
+   defaults: `whatsapp-automation.md` §Conversation hardening. Ventas' port lives in
+   `Sales Automation/scripts/burst/` (`burst-nodes.mjs` is the single source of the 10 nodes,
+   `harness-burst.mjs` has 65 assertions).
+4. **A lead who asks something off-script must not get the menu back.** *"Enviame valores y lo
+   evaluo"* at an option step got *"No te entendí"* + the brochure again, and no alert fired because
+   handoff only triggered on a button tap; the lead sat unanswered five days. Every outbound wizard
+   now answers **price intent** with the real numbers at any step and hands off, and treats free text
+   that looks like a question (`?` or ≥3 words) at a warm step as a handoff with the lead's words
+   quoted — both gated by an auto-responder blocklist so machines don't page a human.
+5. **Ops: multi-statement `psql -c` is one implicit transaction.** `psql -c "INSERT; UPDATE;
    DELETE"` rolls back EVERYTHING if any statement errors — even after printing `INSERT 0 1`.
    A manual suppression "applied" this way silently vanished when a later statement failed.
    Run critical writes as separate `-c` calls (or explicit BEGIN/COMMIT) and re-SELECT to verify.
@@ -209,8 +240,20 @@ tenant; Chatwoot is the first consumer, any API-channel helpdesk works the same)
 - 📘 n8n 2.x refuses to PUT a workflow referencing an unpublished sub-workflow — activate the
   bridge before patching router/runner. 📘 Setting the inbox webhook: `PATCH
   /api/v1/accounts/{a}/inboxes/{i} {channel:{webhook_url}}`.
-- Known v1 limits: media both ways is a text placeholder; reopening after 24h needs a template
-  (not exposed in Chatwoot yet); the T1 alert header is per-tenant hardcoded in the persister.
+- **Media (2026-09-17):** inbound — Normalize Event keeps `media_id/mime/voice/caption/filename`,
+  bridge does Graph `/{media_id}` → size gate (40 MB) → binary download → validate (reject HTML/0 B)
+  → Chatwoot multipart `attachments[]` (Chatwoot parses `content_attributes` from the form field);
+  any failure → one fallback text line. Outbound — Chatwoot `data_url` downloads anonymously
+  (signed redirect, ~5 min) → validate against Meta limits (image jpeg/png 5 MB; audio
+  aac/amr/mpeg/mp4/ogg 16 MB; video mp4/3gpp 16 MB; document 100 MB; other image/audio → document)
+  → upload to `/{phone_number_id}/media` → inbox `send` with `media:{type,id,…}` → `wa_message`.
+  Loop one item at a time to keep order. Chatwoot 4.17's voice recorder produces **mp3** (arrives
+  as audio, not a PTT bubble). Chatwoot attachment payload has no content_type/filename.
+- ⚠️ **Compliance: the inbox `send` action must check `outreach.suppression`** (403, fail-closed).
+  Arka shipped without it and an agent reply reached an opted-out contact (2026-09-16). Any tenant
+  with the two-way inbox (ventas!) has the same gap until patched — the dashboard uses that endpoint.
+- Known limits: reopening after 24h needs a template (not exposed in Chatwoot yet); the T1 alert
+  header is per-tenant hardcoded in the persister; the first-reply alert fires on any inbound number.
 
 ## Compliance — the rules that keep the WABA alive
 

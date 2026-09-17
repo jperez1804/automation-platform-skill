@@ -194,6 +194,100 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 
 **Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
 
+## Conversation hardening (defaults for EVERY new automation, 2026-09-17)
+
+These five behaviours started as fixes on the outbound tenant (`ventas`) after real incidents. They
+are **not vertical-specific**: ship them with any new tenant, inbound or outbound. Working
+implementation to copy: `bot-argento-sales/Sales Automation/n8n/wizards/_src/ventas.js`,
+`_src/router-determine-route.js` and `scripts/burst/`.
+
+### 1. ⚠ The per-contact advisory lock does NOT serialize concurrent executions
+
+`Acquire Advisory Lock` runs `SELECT pg_advisory_lock(hashtext($1))`. That is a **session-level**
+lock tied to the Postgres connection, and n8n's Postgres node reuses a pooled connection, where the
+lock is **re-entrant** — a second execution "acquires" it in ~3 ms while the first still holds it.
+On top of that, `Release Advisory Lock` **never runs**: it hangs off `Call Persist Session And Logs`,
+which emits no items, so n8n stops there and the lock leaks on that connection.
+
+Proven on ventas (execs 37010/37013, 2026-09-17): two webhook messages 439 ms apart both read an
+empty session, both answered, and the second overwrote the first — the anti-loop counter stayed at
+`0` after two unrecognized inputs. **Assume every router has this bug.** It is invisible with human
+typing (seconds apart) and routine with auto-responders, which fire two messages at once.
+
+Burst grouping (below) covers it in practice, because every message waits ≥4 s before consuming
+while processing takes ~1 s. A proper fix — replacing the session lock with a transactional claim,
+the way `consume_inbound_buffer` uses `pg_advisory_xact_lock` **inside a function** — is still open.
+
+### 2. Burst grouping is the default, and outbound groups inside flows too
+
+Ship `runtime.inbound_buffer` + the 9-node chain on every tenant (`PORTING-conversational-upgrades.md`).
+Two deltas found while porting to ventas:
+
+- **A tenant without the audio chain has no `Inbound Ready` node**, and `router-burst-topology.mjs`
+  refuses to run without it. Insert a standalone `Inbound Ready` (noOp) between the chain and
+  `Acquire Advisory Lock` instead of shipping audio just to unlock grouping.
+- **client1 groups only outside an active flow; outbound must group inside flows too.** The dominant
+  burst there is an SMB auto-responder firing two messages at *any* step, not a human splitting a
+  thought. Cost: a 4 s wait when someone types an answer instead of tapping a button.
+
+### 3. ⚠ Burst contract: `Determine Route` must read `Inbound Ready`, not `Normalize Event`
+
+`Normalize Event` holds only the **last** message of a burst. A router that keeps
+`const inbound = $('Normalize Event').first().json` will group correctly (one reply) while silently
+processing a single message: the wizard sees one line, the lead log keeps one inbound row, and **an
+opt-out sent as the first message of a burst is lost** — a compliance hole. Read `Inbound Ready`,
+falling back to `Normalize Event`. Same for anything downstream that needs the full text.
+
+Test discipline that catches it: stub `Normalize Event` with the **last message only** and put the
+grouped payload in `Inbound Ready`, exactly as production does. A harness that feeds the grouped
+text to `Normalize Event` passes while production is broken (this shipped to ventas and was caught
+by the first real smoke test).
+
+Wizards then read bursts as: `text_body` = lines joined with `\n`, `last_text_body` = last line.
+Resolve options **last line first** ("hola" + "2" → option 2), match exact opt-out / defer tokens
+**per line** (bias to suppress), and run intent regexes on the whole text.
+
+### 4. Anti-loop guard + the silent turn (`suppress_send`)
+
+A consecutive-miss counter (`guided_misses`, shared across steps, surviving `clearGuided()`): miss 1
+re-asks, miss 2 sends one goodbye re-showing the buttons and parks the session in `dormant`, where
+unrecognized input emits **`suppress_send: true`** and nothing leaves. Caps any bot-vs-bot loop at
+**2 outbound messages**. Requires two engine-side pieces, both backwards compatible:
+
+- **Sender:** a `Check Suppress Send` switch (`{{ $json.suppress_send === true ? 1 : 0 }}`) between
+  the trigger and the HTTP node; output 1 goes straight to `Build Response`, which already returns
+  `outbound_message_id: ''` / `send_success: false` and spreads `...input`, so the flag survives to
+  the persister. No extra node needed.
+- **Persister:** push the outbound `lead_log` row only `if (data.suppress_send !== true)`; the
+  inbound row is always logged, so the inbox shows no empty outgoing bubbles.
+
+With >1 step that can miss, store which step you parked from (`dormant_from`) — otherwise waking up
+cannot pick the right prompt. Exclude `handoff`/`closed` from the guard **on purpose**: silencing
+there strands an already-qualified lead who writes back.
+
+### 5. Never dead-end a lead: price intent + free-text handoff
+
+A real lead wrote *"Enviame valores y lo evaluo"* at an option step; the wizard answered
+*"No te entendí"* and re-sent the brochure. The lead went unanswered for five days and no alert
+fired, because handoff only triggered on a button tap. Two rules for every wizard:
+
+- **Price intent** (`/\b(precio|valor|cuanto|costo|cuesta|sale|presupuesto|tarifa|abono)\b/`) answers
+  with the real numbers **at any step** except `handoff`/`closed`, and fires handoff + alert.
+- **Free text that looks like a question** (has `?` or ≥3 words) at a warm step hands off with the
+  lead's own words quoted in the summary, instead of repeating the menu.
+
+Both gated by an **auto-responder blocklist** (`horario de atención`, `dejanos tu consulta`,
+`a la brevedad`, `gracias por comunicarte`, `bienvenido`) so machines don't generate false handoffs
+and alerts; they keep falling through to the anti-loop guard.
+
+### 6. Opt-out: exact tokens + regex fallback
+
+Exact-token matching misses real refusals. After the token check add
+`/\bno\b.{0,20}\binter[eé]s\w*/` and `/\bno\b[,.\s]{0,3}gracias\b/`, extract the branch into a
+`buildOptOut()` helper, and keep bare "no" a valid wizard answer. Verified in production on ventas:
+*"por el momento no estamos interesados … gracias!"* was suppressed by the regex three days after
+deploy — the exact tokens would have missed it.
+
 ## Wizard pattern (the part you'll copy per vertical)
 
 Every wizard is **a single n8n Code node** containing a JavaScript state machine. The Code node receives `{ session, normalized_event }` from Execute Workflow, switches on `session.last_route` (current step) + the inbound text, and returns the shared contract.
