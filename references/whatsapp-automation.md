@@ -288,6 +288,39 @@ Exact-token matching misses real refusals. After the token check add
 *"por el momento no estamos interesados … gracias!"* was suppressed by the regex three days after
 deploy — the exact tokens would have missed it.
 
+## Two-way inbox (human takeover)
+
+The dashboard's `/inbox` lets an admin take a conversation, reply by hand, and release it; while
+taken, the bot stays silent. Live on ventas (2026-08-13) and client1 (2026-09-18). Portable version:
+the engine repo (`v2-inbox-webhook.json`, `scripts/lib/router-inbox-topology.mjs`,
+`patch-tenant-live.mjs <tenant> <inbox|inbox-router>`, `MIGRATION-inbox-client1.md`).
+
+- **Data:** `automation.conversation_control` (`mode` `bot|human`, `taken_by`, `expires_at`),
+  `automation.lead_log.sent_by` (`'human'` for agent messages) and `v_conversation_control`
+  (`is_human_controlled`). Written only by n8n; `dashboard_app` has SELECT on the view.
+- **Webhook** `POST /webhook/inbox` (`X-Inbox-Token`), actions `send` / `takeover` / `release`:
+  - `send` returns 401 for a bad token, 400 for a bad request, **403 if opted out** (checked first,
+    fail-closed, conditional on `outreach.suppression` existing), 409 outside the 24 h window and
+    502 if Meta rejects the message. It goes out through the tenant's sender and is logged with
+    `sent_by='human'`.
+  - A **takeover expires after 24 h by default** (`expires_in_hours` 1–720) so a forgotten takeover
+    can't silence the bot forever. ventas still uses `expires_at = NULL`.
+- **Router:**
+  - `Read Session Memory` LEFT JOINs `conversation_control` (the row exists even without a session).
+  - `Determine Route` checks the takeover on the **raw** row (not the TTL-gated profile) and returns
+    `route_target: 'human_paused'` with `human_log_rows`.
+  - `Route Switch` gets a new output (**raise `numberOutputs` in the same PUT**, or the output
+    doesn't exist and n8n drops the item) → `Log Human Inbound` (one `lead_log` row per message,
+    `ON CONFLICT DO NOTHING`) → `Release Advisory Lock`.
+  - No wizard, sender or persister runs.
+- **Order in `Determine Route`:** opt-out first (compliance wins even mid-takeover), then
+  `human_paused`, then everything else — restart words, the post-handoff window, option matching.
+  A tenant without opt-out (client1 today) puts `human_paused` first and leaves the slot marked.
+- **Deploy order:** DB block **before** the router, because the join fails every message without
+  the table. Then the webhook, the router, and the dashboard flag + env pair last.
+- **Dashboard gate:** vertical `features.inboxTab` **and** both env vars (`inboxEnabled()`). Never
+  set them to an empty string — zod rejects it and the whole dashboard fails to boot.
+
 ## Wizard pattern (the part you'll copy per vertical)
 
 Every wizard is **a single n8n Code node** containing a JavaScript state machine. The Code node receives `{ session, normalized_event }` from Execute Workflow, switches on `session.last_route` (current step) + the inbound text, and returns the shared contract.

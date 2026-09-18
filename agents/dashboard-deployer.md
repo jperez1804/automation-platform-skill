@@ -35,10 +35,17 @@ that too before touching any container.
    `28P01` auth failure.
 5. **Env vars live in two places:** `dashboard.env` AND the `environment:` block of
    `dashboard.compose.yml`. A var missing from either is silently undefined in the container.
-6. **Tenant blast radius.** `ventas` is the only tenant with the two-way inbox (env pair
-   `N8N_INBOX_WEBHOOK_URL/TOKEN`); other tenants (arka, tasty, client1, plec) are pinned by image
-   digest. Deploy to exactly the tenant named in the task. Touching another tenant requires an
-   explicit request in this task's prompt — otherwise report and stop.
+6. **Tenant blast radius.** `ventas` and `client1` (since 2026-09-18) have the two-way inbox (env
+   pair `N8N_INBOX_WEBHOOK_URL/TOKEN`). Check each tenant's `DASHBOARD_TAG` in `dashboard.env`
+   instead of assuming a digest pin — client1 tracks `latest`. **Pulling `latest` for one tenant
+   moves the local tag**: containers of other tenants on the old image keep running, but their next
+   `up -d` recreates them on the new image, so say so in the report. Deploy to exactly the tenant
+   named in the task. Touching another tenant requires an explicit request in this task's prompt —
+   otherwise report and stop.
+8. **Never print secrets from env files.** A broad `grep '^DASHBOARD_' dashboard.env` also matched
+   `DASHBOARD_APP_PASSWORD` and leaked it into the session log (client1, 2026-09-18). Grep exact
+   keys, or pipe through `sed -E 's/=.*/=<hidden>/'`; prove a secret is set by length or a sha256
+   prefix only.
 7. **Dashboard never writes `automation.*`.** If a change adds a write there, it is a bug; stop and
    report. Dashboard-side state belongs in `dashboard.*` (migrations under `migrations/`, run at
    boot).

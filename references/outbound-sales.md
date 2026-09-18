@@ -252,6 +252,13 @@ tenant; Chatwoot is the first consumer, any API-channel helpdesk works the same)
 - ⚠️ **Compliance: the inbox `send` action must check `outreach.suppression`** (403, fail-closed).
   Arka shipped without it and an agent reply reached an opted-out contact (2026-09-16). Any tenant
   with the two-way inbox (ventas!) has the same gap until patched — the dashboard uses that endpoint.
+  **Fixed pattern (2026-09-18, engine repo `v2-inbox-webhook.json`, live on client1):** `Check Window`
+  also returns `suppressed`, reading `outreach.suppression` only if `to_regclass` finds it and
+  through `query_to_xml(format(…))` so the name resolves at run time — one webhook for inbound and
+  outbound tenants. `Gate Window` returns 403 before the 24h 409, fail-closed (anything but an
+  explicit `false`). **ventas still runs the old webhook** without it; port that one change there.
+  ventas also logs a burst sent during a takeover as one joined `lead_log` row; client1's
+  `Log Human Inbound` writes one row per message (`human_log_rows` + `jsonb_array_elements`).
 - Known limits: reopening after 24h needs a template (not exposed in Chatwoot yet); the T1 alert
   header is per-tenant hardcoded in the persister; the first-reply alert fires on any inbound number.
 

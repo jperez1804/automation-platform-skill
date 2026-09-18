@@ -16,7 +16,7 @@
 
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
-| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-16 | See `reference-instance.md` + §Client1 engine upgrades + §Client1 dashboard refresh below |
+| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-18 | See `reference-instance.md` + §Client1 engine upgrades + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
 | `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
@@ -41,6 +41,25 @@ First tenant with the conversational upgrades (POC — Jonatan wants every funct
 - **Smoke test (real WhatsApp, 2026-09-15):** transcription correct, but "Tres habitaciones", "Quiero hablar con un asesor" and "Me gustaría un departamento" were rejected by the wizards → fixed the same day with sentence → option resolution in `Determine Route`. **Retest of that fix pending**, plus smoke tests for burst grouping and the post-handoff window.
 - **Traffic reality:** a 30-day `lead_log` check showed 4 contacts and 0 real bursts (all quick follow-ups came after a bot reply). Grouping shipped for completeness of the POC, not demand.
 - **Deploy/verify:** `node scripts/patch-tenant-live.mjs client1 <target>`; `verify` = 35 checks.
+
+### Two-way inbox — 2026-09-18 (first inbound tenant with it)
+
+Port of ventas' `/inbox`, following `whatsapp-automation-claude/MIGRATION-inbox-client1.md`. Architecture: `whatsapp-automation.md` §Two-way inbox.
+
+- **DB:** TWO-WAY INBOX block of the engine's `postgres-setup.sql` (`conversation_control`, `lead_log.sent_by`, `v_conversation_control` with SELECT for `dashboard_app`). Tested inside `BEGIN … ROLLBACK`, then applied.
+- **n8n:**
+  - Inbox webhook `XSLlEdfiWiti34rw`: `POST /webhook/inbox`, `X-Inbox-Token` = `INBOX_WEBHOOK_TOKEN`.
+  - Router `5bbd4fc3…` (rollback `2349373c…`).
+  - Deployed with `patch-tenant-live.mjs client1 <inbox|inbox-router>`; `verify` 47/47.
+- **Dashboard:**
+  - PR botargento-dashboard#12 (`real-estate` → `inboxTab: true`) merged as `b5ae829`; client1 alone redeployed.
+  - Image `sha256:5bcb86ce…`; rollback is `sha256:344f55bd…`.
+  - `DASHBOARD_TAG=latest`.
+- **Difference from ventas:** a takeover **expires after 24 h** by default (`expires_in_hours`), and the `send` action checks opt-out (`outreach.suppression`, only when the table exists — client1 has none yet).
+- **Order in `Determine Route`:** `human_paused` is first, above restart words and the post-handoff window. When the hardening port adds opt-out to client1, it goes **above** `human_paused`.
+- **Env:** token generated on the VPS; `INBOX_WEBHOOK_TOKEN` in `.env` and `N8N_INBOX_WEBHOOK_URL/TOKEN` in `dashboard.env` + both compose files; backups `*.bak.20260918183521`.
+- ⚠️ **Rotate client1's `dashboard_app` DB password** — the deploy agent's `grep` printed `DASHBOARD_APP_PASSWORD` into the session log (2026-09-18). Pending Jonatan's go-ahead.
+- **Pending:** real-WhatsApp smoke test (take over → bot silent → reply from panel → release → bot answers).
 
 ## Client1 dashboard refresh — 2026-06-01
 
