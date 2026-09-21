@@ -16,9 +16,50 @@
 
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
-| `client1` | real-estate | **Live** (dashboard refresh PRs 1→13.1 deployed 2026-06-01 — same image as Plec) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-06-01 | See `reference-instance.md` + §Client1 dashboard refresh below |
+| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-18 | See `reference-instance.md` + §Client1 engine upgrades + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
-| `bot-argento-sales` | outbound-sales | **Containers provisioned** (n8n + Postgres + TLS live on VPS 2026-06-05; no WABA yet) | `ventas.botargento.com.ar` (n8n) | 2026-06-05 | See §Bot Argento Sales below |
+| `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
+| `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
+| `tasty` | outbound-sales (growshops) | **Live** — campaign 3 `growshops-amba-2026-07` ACTIVE since 2026-07-12 (419 recipients, cap 15/day) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-07-12 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
+| `arka` | outbound-sales (clínicas · **España**) — **provider mode + Chatwoot mirror since 2026-09-16** (bot OFF, `ARKA_CONVERSATION_MODE=chatwoot`) | **Live** — campaign 5 `clinicas-barcelona-2026-09` **paused by client** (277 seeded, 45 touched, cap 15/day, 10–12 Madrid); test campaign 6 `test-chatwoot-2num` running; 12/12 workflows ACTIVE | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
+| `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
+| `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — EN CURSO** (primeras notas del cliente volcadas 2026-09-17: CRM **Lider PROP**, 2 líneas WA app (ventas / administración), ~10 consultas/día ventas; **menú fase 1 = 5 opciones** sin Emprendimientos ni wizard Propietarios; `propuesta.md` v1; **bloqueante: acceso a Lider PROP** (feed/API) + decisión sobre la línea de ventas; **nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-17 | See §Miguelez Propiedades below |
+
+## Client1 engine upgrades — 2026-09-15 / 16
+
+First tenant with the conversational upgrades (POC — Jonatan wants every functionality here before porting). Client1 has no `_src` workspace: the engine repo `whatsapp-automation-claude` is its source of truth. Runbooks and rollback ids: `MIGRATION-*-client1.md` and `_client1_backup/_versions.txt` in that repo; architecture in `whatsapp-automation.md` §Conversational upgrades.
+
+| Date | Delivery | Router versionId | Persister versionId |
+|---|---|---|---|
+| 2026-09-15 | Post-handoff window | `06938789-1734…` | `7d408179-cca2…` |
+| 2026-09-15 | Voice-note transcription | `13e80f2f-7905…` | `c1c57a06-be0a…` |
+| 2026-09-15 | Burst grouping (+ `runtime` schema DDL) | `6e2ed6b0-28de…` | `88cbf3dd-88ae…` |
+| 2026-09-15 | Spoken answers to option lists (smoke-test fix) | `2349373c-eaf5…` | — |
+| 2026-09-16 | Deployer refactored to `patch-tenant-live.mjs` + `tenants.json` (no live change) | — | — |
+
+- **Env / VPS 2026-09-15:** `OPENAI_API_KEY` rotated in `/opt/n8n/client1/.env` (the previous keys had been exposed on Bitbucket; Jonatan inactivated all old keys). The first transcription call returned `429 credit_balance_exhausted` until the OpenAI org was topped up. `n8n-client1` recreated with `--no-deps`. `.env` and its backups chmod `600` (was `664`).
+- **Smoke test (real WhatsApp, 2026-09-15):** transcription correct, but "Tres habitaciones", "Quiero hablar con un asesor" and "Me gustaría un departamento" were rejected by the wizards → fixed the same day with sentence → option resolution in `Determine Route`. **Retest of that fix pending**, plus smoke tests for burst grouping and the post-handoff window.
+- **Traffic reality:** a 30-day `lead_log` check showed 4 contacts and 0 real bursts (all quick follow-ups came after a bot reply). Grouping shipped for completeness of the POC, not demand.
+- **Deploy/verify:** `node scripts/patch-tenant-live.mjs client1 <target>`; `verify` = 35 checks.
+
+### Two-way inbox — 2026-09-18 (first inbound tenant with it)
+
+Port of ventas' `/inbox`, following `whatsapp-automation-claude/MIGRATION-inbox-client1.md`. Architecture: `whatsapp-automation.md` §Two-way inbox.
+
+- **DB:** TWO-WAY INBOX block of the engine's `postgres-setup.sql` (`conversation_control`, `lead_log.sent_by`, `v_conversation_control` with SELECT for `dashboard_app`). Tested inside `BEGIN … ROLLBACK`, then applied.
+- **n8n:**
+  - Inbox webhook `XSLlEdfiWiti34rw`: `POST /webhook/inbox`, `X-Inbox-Token` = `INBOX_WEBHOOK_TOKEN`.
+  - Router `5bbd4fc3…` (rollback `2349373c…`).
+  - Deployed with `patch-tenant-live.mjs client1 <inbox|inbox-router>`; `verify` 47/47.
+- **Dashboard:**
+  - PR botargento-dashboard#12 (`real-estate` → `inboxTab: true`) merged as `b5ae829`; client1 alone redeployed.
+  - Image `sha256:5bcb86ce…`; rollback is `sha256:344f55bd…`.
+  - `DASHBOARD_TAG=latest`.
+- **Difference from ventas:** a takeover **expires after 24 h** by default (`expires_in_hours`), and the `send` action checks opt-out (`outreach.suppression`, only when the table exists — client1 has none yet).
+- **Order in `Determine Route`:** `human_paused` is first, above restart words and the post-handoff window. When the hardening port adds opt-out to client1, it goes **above** `human_paused`.
+- **Env:** token generated on the VPS; `INBOX_WEBHOOK_TOKEN` in `.env` and `N8N_INBOX_WEBHOOK_URL/TOKEN` in `dashboard.env` + both compose files; backups `*.bak.20260918183521`.
+- ⚠️ **Rotate client1's `dashboard_app` DB password** — the deploy agent's `grep` printed `DASHBOARD_APP_PASSWORD` into the session log (2026-09-18). Pending Jonatan's go-ahead.
+- **Pending:** real-WhatsApp smoke test (take over → bot silent → reply from panel → release → bot answers).
 
 ## Client1 dashboard refresh — 2026-06-01
 
@@ -55,7 +96,7 @@ A second app (**Manychat**) is also subscribed to that WABA — legacy, candidat
 other tenants' numbers to this WABA: overrides are per-WABA.
 
 **Pending for client1** (intentional, no client request yet):
-- Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.
+- ~~Meta template HSM for handoff notifications. Procedure documented in `whatsapp-automation-claude/MIGRATION-template-mode-client1.md`. Template was created and approved (`handoff_notification`, es_AR) but the persister patch + env vars haven't been applied yet — client1 still on text mode and subject to the 24h messaging window. Will be done in a separate session connected to client1's n8n via MCP.~~ **Outdated (noted 2026-09-16):** client1's live persister sends handoff notifications with the `handoff_notification` template. The 2026-09 follow-up notifications were built on template mode and had to respect its body rules (Meta #132018: no newlines in body parameters, header ≤ 60 chars).
 
 ---
 
@@ -215,7 +256,7 @@ Total sub-opciones: **17**. T1 ⚡ ≈ 59% (Opción 1.* + 3.* + 4.*) · T2 ⭐ �
 
 ## Bot Argento Sales
 
-**Stage:** Containers provisioned — the **outbound** companion to the inbound platform (the mirror image: it
+**Stage:** Live (Phase A complete, outbound idle since 2026-06-19 — see the 2026-07-30 entry) — the **outbound** companion to the inbound platform (the mirror image: it
 cold-messages prospects with a Meta template that earns a reply, then the existing router + a `ventas`
 pitch wizard qualify them in-window and hand off to Jonatan). Architecture + the Phase-B add-on recipe
 live in `outbound-sales.md`. Dual purpose: Phase A = Jonatan's own client acquisition; Phase B = sold
@@ -341,21 +382,90 @@ to clients as an "outbound campaigns" add-on dropped into their existing tenant.
   with all params rendered. **The inbound half of Bot Argento Sales is operational.**
 - Note: handoff priority renders T3 (persister `PRIORITY_BY_TARGET` has no `ventas` entry → default
   3). Optional tweak: map `ventas → 1` to badge demo-requests as T1 ⚡.
-- Pending (outbound half): remove test number `+1 555-990-2333` from the WABA → first campaign
-  (`outreach.campaigns` row, architecture vertical, `template_name=outreach_intro`, `daily_cap=40` →
-  seed recipients CSV with `opt_in_basis` via `seed-recipients.mjs` → activate `v2-campaign-runner`,
-  ramp 30–50/day, watch quality rating).
+### Updated 2026-06-09 (read-only campaigns dashboard built)
+
+- **First use of the `campaignsTab` feature** (reusable, Phase-B-ready). `botargento-dashboard` gained an
+  `outbound-sales` vertical + `features.campaignsTab` + a read-only `/campaigns` page (quality badge +
+  KPI tiles + per-campaign funnel table + daily-sends chart). Pattern cloned from the `providersTab`.
+- Outbound funnel data comes from new `outreach.v_*` views (`v_campaign_stats` / `v_outreach_overview`
+  / `v_campaign_daily`) in the ventas DB. Quality rating via `outreach.quality_log` + `v_quality_current`,
+  fed by a scheduled n8n Graph poll (`v2-quality-poll.json`, ACTIVE, every 6 h) — **Approach 2**: the
+  dashboard stays pure-Postgres-read; n8n is the only thing talking to Meta. (Real-time
+  `phone_number_quality_update` webhook branch deferred — needs the Meta field toggle + router surgery.)
+- Grant: `migrations/0003_outreach_grants.sql` conditionally grants `dashboard_app` SELECT on
+  `outreach.*` (no-op for client1/plec — guarded by `IF EXISTS schema 'outreach'`); applied as superuser
+  by `provision-tenant.sh`. **Lesson:** `dashboard_app` is granted per-schema in `0000_init.sql`
+  (automation only) — a new readable schema needs its own additive grant migration; never add
+  `outreach.v_*` to the dashboard's `REQUIRED_VIEWS` (automation-only, boot-verified, would crash other tenants).
+- ⏸️ Dashboard **container** not provisioned yet: needs DNS `dashboard.ventas.botargento.com.ar`, a logo
+  asset, and `provision-tenant.sh ventas VERTICAL=outbound-sales`. Plan: `expressive-churning-hennessy.md`.
+- ✅ **DNS moved to Cloudflare (2026-06-10) — subdomain cap gone, platform-wide.** The DonWeb legacy
+  reseller plan capped subdomains at 5/account (not liftable; DonWeb only offered a ~$112k ARS
+  Cloud-Server upsell — declined, since the need was DNS records, not compute). Resolved by moving the
+  `botargento.com.ar` **zone to Cloudflare free** (unlimited records). NS at **nic.ar** changed to
+  `julissa.ns.cloudflare.com` / `mark.ns.cloudflare.com`; **all records DNS-only (grey)** — Cloudflare
+  is pure authoritative DNS, DonWeb still hosts email + root site (email verified post-migration). This
+  **unblocks the whole platform** — subdomains are now free + unlimited, so any number of agencies can be
+  onboarded. **⚠️ Migration gotchas to remember for future zones:** (1) Cloudflare's auto-scan imports
+  only common/email names (mail/www/ftp/mx) and **silently skips custom subdomains** — the VPS records
+  (client1/plec/ventas + dashboards) had to be added by hand or those tenants would have gone dark on
+  cutover; (2) it defaults every record to **Proxied (orange)** — must flip all to **DNS only (grey)**
+  or email/FTP break and Traefik's LE TLS breaks; (3) preserve DKIM + the **Resend** records
+  (`resend._domainkey`, `send` MX/TXT) — dashboard magic-link auth depends on them; (4) `.com.ar` NS
+  delegation is changed at **nic.ar**. (Propagated 2026-06-10; dashboard container provisioned same day.)
+- ✅ **Dashboard container LIVE (2026-06-10):** `provision-tenant.sh ventas` (`VERTICAL=outbound-sales`)
+  → `n8n-ventas-dashboard` running at `https://dashboard.ventas.botargento.com.ar` (LE cert ✓, first
+  try), migrations 0000–0003 incl. the `outreach` grant, `dashboard_app` reads `outreach.v_*`
+  (badge GREEN). 📘 **Provisioning gotcha:** `provision-tenant.sh` bash-`source`s the tenant n8n `.env`
+  — **quote any multi-word value** (`BRAND_NAME="Bot Argento"`) or it dies with "Argento: command not
+  found"; docker-compose strips the quotes so n8n still gets the bare value. Last step: Jonatan's
+  magic-link login + eyeball `/campaigns`.
+- Tech debt (v2): campaign controls (pause/cap/seed) from the dashboard — needs a separate writable role.
+
+- ~~Pending (outbound half): remove test number `+1 555-990-2333` from the WABA → first campaign~~ —
+  first campaign launched 2026-06-11 (see below).
+
+### Updated 2026-06-11 → 2026-06-21 (first campaigns ran)
+
+- ✅ **Campaign 1 `arquitectura-zonasur-2026-06` launched 2026-06-11** (87 architecture studios,
+  `daily_cap=15`, template `outreach_intro`). Runner + quality-poll + reconcile all activated
+  (`v2-outreach-reconcile.json` added 2026-06-10 to derive `replied`/`opted_out` funnel states —
+  see `outbound-sales.md` §Funnel reconciliation).
+- ✅ **Session TTL bumped 30min → 72h (2026-06-19)** after a live lead's 1h47m-delayed reply got
+  dropped — `SESSION_MEMORY_TTL_MS=259200000`, compose rewired to read `.env` (was hardcoded).
+  Detail in the workspace `infra-status.md`.
+- ✅ **Campaign 2 `tasty-living-soils-demo-2026-06`** (2026-06-21): 1-recipient demo → replied →
+  **converted: Tasty is now a live Phase-B tenant** (see §tenant index).
+
+### Updated 2026-07-30 (live-state check — campaign 1 complete, outbound idle)
+
+Verified against the live VPS (containers + Postgres), not just docs:
+
+- ✅ Infra healthy: `n8n-ventas` / postgres / dashboard all up; **all 8 workflows ACTIVE**;
+  quality poll firing on schedule, `v_quality_current` = **GREEN**.
+- ✅ **Campaign 1 finished sending 2026-06-19.** Final funnel over 87 recipients: **12 replied
+  (13.8%)**, 4 opted out (4.6%), 71 sent-no-reply. Suppression list: 6 numbers.
+- 🟡 Campaign row still `status='active'` but **0 pending recipients — the runner has been starved
+  since 2026-06-19**. Housekeeping: mark it `done`.
+- ✅ Inbound half still working organically: last `lead_log` row 2026-07-25, last escalation
+  2026-07-22 (23 total).
+- 📌 **Phase A did its job; effort shifted to Phase B client sales** (Tasty live, ArtBox inbound
+  live, Arka in discovery+). Bot Argento Sales is now the idle worked reference for outbound.
+- ⏸️ **Two-way inbox** (`docs/ventas/two-way-inbox-plan.md`, 2026-07-01) remains **proposed, not
+  started** — no code written.
 
 ### Pending (next sessions)
 
 1. ~~**Provision VPS tenant**~~ — done 2026-06-05 (see above).
-2. ~~**Sales WABA onboarding**~~ — done 2026-06-05 with a TEST number 🟡; swap to the real dedicated
-   sales number + long-lived token before campaign go-live.
+2. ~~**Sales WABA onboarding**~~ — done 2026-06-05 with a TEST number 🟡 → real number 2026-06-07.
 3. ~~**Import + wire**~~ — done 2026-06-05 (see above).
-4. **Templates** — submit `outreach_intro` (Marketing) + `handoff_notification` (Utility) under the
-   sales WABA; set `META_HANDOFF_TEMPLATE_NAME` once approved.
-5. **First campaign** — `outreach.campaigns` row (architecture vertical), seed recipients, ramp 30–50/day.
-6. `SALES_CALENDAR_URL` for the demo CTA.
+4. ~~**Templates**~~ — both submitted + APPROVED 2026-06-07; `META_HANDOFF_TEMPLATE_NAME` set.
+5. ~~**First campaign**~~ — `arquitectura-zonasur-2026-06` ran 2026-06-11 → 2026-06-19 (12/87 replied).
+6. ~~`SALES_CALENDAR_URL` for the demo CTA~~ — set 2026-06-07.
+7. **Second campaign** — runner is active but starved; needs a new CSV → `seed-recipients.mjs` →
+   campaign row (next architecture batch or another vertical).
+8. **Housekeeping** — set campaign 1 `status='done'`; remove test number `+1 555-990-2333` from the WABA.
+9. **Two-way inbox** — decide whether to build (plan exists, feature-flagged `inboxTab`, Phase-B sellable).
 
 ### References for Bot Argento Sales
 
@@ -363,6 +473,404 @@ to clients as an "outbound campaigns" add-on dropped into their existing tenant.
 - Live state: `C:\Desarollo\jperez\bot-argento-sales\Sales Automation\docs\ventas\infra-status.md`
 - Flow spec: `…\docs\ventas\flow-v2.md` · Compliance: `…\docs\ventas\outreach-compliance.md`
 - Plan that generated this scaffold: `C:\Users\jperez\.claude\plans\i-think-we-should-linear-corbato.md`
+
+## ArtBox
+
+**Stage:** Containers provisioned — first **client sale of the outbound engine** (Phase B, but as a
+fresh outbound-first tenant, not an add-on to an existing inbound tenant). Cold outreach to
+**fábricas/industrias GBA Zona Sur** pitching uniforms/personalized staff merch. Dedicated line,
+WABA onboarding done by Jonatan (embedded signup with the client).
+
+**Workspace:** `C:\Desarollo\jperez\ArtBox\ArtBox Automation\`
+**Subdomain:** `artbox.botargento.com.ar` → n8n (container `n8n-artbox`).
+**Prospects ready:** `C:\Desarollo\jperez\scraping project\ArtBox\run_ZonaSur_2026-07-01\prospects-factories.csv`
+— 315 checknumber-validated numbers (vertical `factories`), `opt_in_basis` blank pending a per-batch basis.
+
+### Updated 2026-07-02 (VPS tenant provisioned)
+
+- ✅ Pivot confirmed: cold outbound (bot-argento-sales clone), replacing the earlier warm-base
+  seasonal-campaigns proposal (`docs/propuesta-campanas-temporada.md`, now superseded).
+- ✅ `/opt/n8n/artbox/` created (root mkdir + chown via paramiko with the rotated root password from
+  `bot-argento-sales/…/handoff/vps-root-access.md`) — compose + `.env` (0600) + `postgres-setup.sql`
+  uploaded; local copies in `ArtBox Automation/n8n/compose/`.
+- ✅ Containers `n8n-artbox` (n8nio/n8n:2.4.7) + `n8n-artbox-postgres` (postgres:16) up, healthy.
+  Compose drops the legacy `N8N_BASIC_AUTH_*` vars (n8n 2.x ignores them).
+- ✅ Schemas applied from the bot-argento-sales SQL (generic): `automation.*` (7 tables + 7 views) +
+  `outreach.*` (4 tables + 4 views incl. quality_log).
+- ✅ `artbox` appended to `/opt/scripts/tenants.txt`.
+- ✅ **DNS + TLS live (2026-07-02):** A record added by Jonatan in Cloudflare; first ACME attempt had
+  NXDOMAIN'd pre-propagation and stuck in Traefik's in-memory backoff — `docker restart traefik`
+  fixed it (other tenants verified 200 after). LE cert valid → 2026-09-30; n8n answers HTTPS 200.
+- ✅ **Meta creds live (2026-07-02):** the ArtBox number lives on the client's own WABA
+  **"Matias Armolla" (`1681666796437018`)**, number **+54 9 11 6597-8419**, phone_number_id
+  **`1213540318503648`**, display name "Productos Artbox de Matias Armolla",
+  `status=CONNECTED` (already registered), `name_status=AVAILABLE_WITHOUT_REVIEW`,
+  `quality_rating=UNKNOWN` (fresh). **The ventas container's `META_ACCESS_TOKEN` works for this WABA
+  too** (same Tech Provider system-user token across the portfolio) — copied into
+  `/opt/n8n/artbox/.env` + container recreated + Graph smoke-tested. Local `.env` synced back.
+- ⚠️ **Webhook override NOT set yet** on the ArtBox WABA (BotArgento app subscribed, no
+  `override_callback_uri`). Must be set to `https://artbox.botargento.com.ar/webhook/whatsapp/meta`
+  (verify token = artbox `.env`'s `META_VERIFY_TOKEN`) **after** the router is imported + active,
+  since the override POST fires the GET handshake immediately.
+- ⏸️ `VENTAS_WHATSAPP_NUMBER` = Jonatan placeholder until ArtBox confirms the salesperson number.
+- ~~⏸️ n8n owner account not created~~ ✅ **Owner + API key done (2026-07-03)** — key in
+  `ArtBox Automation/handoff/n8n-api-key.txt`, verified against the REST API.
+
+### Updated 2026-07-03/06 (workspace + flow doc + confirmed first message)
+
+- ✅ Workspace scaffolded as a git repo mirroring bot-argento-sales (`docs/artbox/`,
+  `n8n/wizards/_src/`, `scripts/wizards/`, `handoff/` gitignored).
+- ✅ Client-facing flow doc `docs/artbox/flujo-campana-fabricas.md` + `.html` (WhatsApp-style
+  mockups). Assistant script draft: qué necesitás → volumen → handoff — pending client validation.
+- ✅ **First message confirmed with the client** (contact: Matías Armolla): "Hola, soy Matías de
+  ArtBox. Hacemos productos personalizados, indumentaria y merchandising para empresas. ¿Te interesa
+  conocer nuestros productos a un precio de preventa?" — **3 quick-reply buttons**:
+  `Ver propuesta` (→ wizard) / `Puede ser más adelante` (**soft defer** — ack + end, NO suppression,
+  reachable in future campaigns; needs a net-new defer branch in the router) / `No me interesa`
+  (opt-out → suppression). All ≤25 chars. **Not yet submitted to Meta.**
+- 📌 Live-state check 2026-07-12: still 0 workflows imported, 0 templates on the WABA, no webhook
+  override — infra idle and healthy, waiting on the build phase.
+
+### Updated 2026-07-12 (engine deployed — INBOUND HALF LIVE)
+
+- ✅ Flow signed off by Jonatan; template gained an **image header** (photo per campaign via new
+  `outreach.campaigns.header_image_url` column — applied live + in postgres-setup.sql).
+- ✅ Engine cloned from bot-argento-sales into `ArtBox Automation` (git): `_src/artbox.js` wizard
+  (necesidad → volumen → handoff target `ventas` T1, reason `artbox_lead_calificado`), router with
+  **defer branch** (`puede ser más adelante` → ack, NO suppression) + opt-out branch, runner with
+  IMAGE header support and **no body params** (confirmed template has none). Persister patched with
+  an ArtBox `ventas` header label (fallback would have read "Nuevo handoff: ventas").
+- ✅ 8 workflows imported + wired via scripts (0 missing creds / 0 unwired). **7 ACTIVE** — 📘 n8n
+  2.x refuses to publish the router until its executeWorkflow targets are published; activate in
+  dependency order. Campaign-runner deliberately inactive until the first campaign.
+- ✅ Webhook override SET on WABA `1681666796437018` → artbox n8n; GET handshake verified
+  (200 + challenge echo). **The inbound half is operational.**
+- ✅ `handoff_notification` (Utility, ArtBox-branded, buttonless) submitted → id `4472845659666448`,
+  status PENDING.
+- ⏸️ Marketing template blocked on ArtBox's product photo (image header needs a sample upload).
+
+### Pending (next sessions)
+
+1. Smoke test from a third number (wizard + defer + opt-out + dedup).
+2. On `handoff_notification` approval: set `META_HANDOFF_TEMPLATE_NAME=handoff_notification` in
+   `.env` (local + VPS) + recreate the container.
+3. Product photo from ArtBox (public HTTPS URL) → submit the Marketing template → on approval set
+   `outreach.campaigns.header_image_url`.
+4. Rotate `VENTAS_WHATSAPP_NUMBER` to the ArtBox salesperson.
+5. Dashboard container (`dashboard.artbox.botargento.com.ar`, `VERTICAL=outbound-sales`).
+6. First campaign: stamp `opt_in_basis`, seed the 315, **activate campaign-runner**, ramp 30–50/day.
+
+## Arka Systems
+
+**Stage:** Live (inbound half) — smoke-tested 2026-08-03, awaiting seed+pilot GO — **first
+Spain-market tenant.** Client sale of the outbound engine (Phase B,
+Tasty/ArtBox pattern). Arka Systems (arkasystems.es, Barcelona — Esteban Pérez & Harvey Bince)
+sells AI automation (WhatsApp agents 24/7, voice, RAG); campaign cold-messages **clínicas de
+Barcelona** (dental / fisioterapia / estética / oftalmología) pitching Arka's services, with their
+own Voraldent dental-clinic case as social proof.
+
+**Workspace:** `C:\Desarollo\jperez\arkasystems\ArkaSystems Automation\`
+**Scraping provenance:** `C:\Desarollo\jperez\scraping project\ArkaSystems\` (run 2026-07-22)
+
+### Confirmed at session 2026-07-27 (workspace + flow doc)
+
+- ✅ Scraping delivered 2026-07-22: 1.040 clinics → 500 checknumber-validated → **277 confirmed
+  WhatsApp leads** (dental 103, fisio 135, estética 31, oftalmo 8). Seed
+  `handoff/prospects-clinicas.csv`, `opt_in_basis` blank pending RGPD wording with the client.
+- ✅ Workspace scaffolded (mirrors Tasty layout; engine dirs are placeholders with READMEs).
+- ✅ Client-facing flow doc `docs/ventas/flujo-campana-clinicas.md` + branded `.html`
+  (WhatsApp mockups, BORRADOR v1 27/07/2026) — template draft `Ver cómo funciona` /
+  `Quizás más adelante` (defer) / `No me interesa` (opt-out), wizard = 1 question
+  ("¿Cómo gestionáis hoy las citas por WhatsApp?") → Voraldent proof + Agendar demo cta_url →
+  handoff. Template spec in `docs/ventas/templates/outreach_intro.md` (**es_ES**).
+- 📌 User decision: campaign 1 = **all 277** (4 categories, one campaign, ramped; category on
+  each recipient row for per-category metrics).
+- ⚠️ **ES deltas to respect at engine-clone time:** timezone **Europe/Madrid** (runner gating SQL
+  + container TZ + dashboard `CLIENT_TIMEZONE`), locale `es-ES` (tuteo — no voseo), template lang
+  `es_ES`, opt-out tokens `baja`/`stop`/`no me interesa`, `wa_id = 34` + 9 digits (no AR `9`).
+
+### Updated 2026-07-28 (client feedback → flow doc v2)
+
+- ✅ Arka sent their own copy for both messages, incorporated into the flow doc + template spec:
+  - Template body v2 (signed Esteban, "presupuestos en 'me lo pienso'" hook) **with an IMAGE
+    header** — creative pending from Arka. Engine consequence: the runner clone must be
+    **ArtBox-lineage** (IMAGE header + `outreach.campaigns.header_image_url`).
+  - Wizard question v2: "¿Qué le come más tiempo hoy a vuestra recepción?" → buttons
+    `Responder mensajes` / `Confirmar citas` / pain-tailored step-2 reply + Agendar demo.
+- ⚠️ Their third button `Perseguir presupuestos` = **22 chars > the 20-char interactive-button
+  limit**; proposed `Seguir presupuestos` (19) — pending client confirmation.
+
+### Updated 2026-07-30 (WABA live + templates submitted)
+
+- ✅ Header image received (`assets/campana-clinicas-v2.jpeg`, 1200×628 64 KB, on spec) and
+  embedded in the flow-doc HTML mockup. Flow doc gained the documented **step 3** (team alert
+  with lead card mockup).
+- ✅ **Arka WABA is live**: WABA `2857116591318282` (BM `807638368889424`), number
+  **+34 613 79 32 10**, phone_number_id `1311525598700114`, CONNECTED/VERIFIED, name "Arka
+  Systems", quality UNKNOWN. **The shared Tech Provider system-user token (app BotArgento)
+  works against it** — details in workspace `handoff/waba-arka-number.md`.
+- ✅ **Both templates submitted 2026-07-30 via Graph API, PENDING**: `outreach_intro`
+  (Marketing **es_ES**, IMAGE header via resumable-upload sample, id `2103562077251490`) +
+  `handoff_notification` (Utility es_ES, Arka-branded Tasty clone, id `887803953988703`).
+
+### Updated 2026-07-31 — ✅ templates APPROVED + ALL client blockers closed
+
+- ✅ Both templates APPROVED (verified via Graph; quality UNKNOWN, no sends yet).
+- ✅ Client answers received: WABA **payment method configured** + number profile completed;
+  `VENTAS_WHATSAPP_NUMBER=34671286513`; `SALES_CALENDAR_URL=https://calendar.app.google/znui2XQQBUH9YqBJ8`;
+  send-time image → `https://botargento.com.ar/arka/campana-clinicas-v2.jpeg` (upload pending);
+  `Seguir presupuestos` + step-2 approach confirmed (v1 per-pain drafts in flow doc §3);
+  logo received (`assets/logo-arka.png`, needs SVG wrap for the dashboard).
+- ✅ `opt_in_basis` wording **APPROVED by Arka same day** (interés legítimo art. 19 LOPDGDD) —
+  stamp at seed time. **No client blockers remain** — everything left is build work (+ the
+  image upload to botargento.com.ar/arka/ and the Cloudflare A record, both Jonatan's).
+
+### Updated 2026-07-31 (engine clone DONE — simulated, not deployed)
+
+- ✅ Engine cloned from ArtBox and adapted, all flows verified by local simulation: `arka.js`
+  wizard (dolor → per-pain reply + cta_url Agendar demo → T1 handoff), router (Quizás-defer +
+  ES opt-out tokens, es-ES copy), runner (IMAGE header + `{{1}}` body param, es_ES), compose
+  slug `arka` **TZ Europe/Madrid** (SQL + gating swapped), persister patched (Clínicas header
+  label + es_ES fallback). `handoff/arka.env` generated with real secrets; `assets/logo.svg`
+  ready for the dashboard. 8 workflow JSONs built/copied; import ORDER verified.
+
+### Updated 2026-07-31 (VPS tenant deployed — INBOUND HALF LIVE)
+
+- ✅ Image hosted (botargento.com.ar/arka/…jpeg) + DNS A `arka` created (both Jonatan).
+- ✅ `/opt/n8n/arka/` provisioned (root pw = **Tasty** handoff's `vps-root-access.md`, NOT the
+  superseded bot-argento-sales one); containers up; schemas applied; `arka` in tenants.txt;
+  TLS LE first try (valid → 2026-10-29).
+- ✅ n8n owner + API key via REST (📘 2.4.x: POST /rest/api-keys REQUIRES the `scopes` array —
+  fetch allowed list from /rest/api-keys/scopes). 8 workflows imported + wired (`Postgres Arka`,
+  3 executeWorkflow ids, error workflow ×7) + `SMTP Handoff` Resend credential attached to
+  persister/error-handler email nodes (📘 smtp schema: `secure:true` → `disableStartTls` must be
+  ABSENT). **7 ACTIVE** in dependency order; campaign-runner off until campaign 1.
+- ✅ Webhook override SET on WABA `2857116591318282` → arka n8n; handshake verified (challenge
+  echo + 403 on wrong token). Secrets in workspace `handoff/` (arka.env, n8n-owner-arka.md,
+  n8n-api-key.txt).
+
+### Updated 2026-08-03 — SMOKE TEST COMPLETE, engine 100% validated
+
+- ✅ Happy path ×2 (organic entry w/ intro; dolor button → per-pain reply + demo; T1 escalations;
+  handoff template + email delivered). Post-handoff free-text behaves as designed.
+- ✅ **Defer branch** live-verified: "Quizás más adelante" → route `defer`, friendly ack, NO
+  suppression. ✅ **Opt-out branch**: "No me interesa" → route `optout`, confirmation, suppression
+  row written. Test wa_id (Jonatan `5491121911850`) then DELETEd from suppression (session_memory
+  also reset during testing). Quality GREEN, **TIER_250**, poll logging every 6h.
+
+### Updated 2026-08-03 (dashboard LIVE)
+
+- ✅ `https://dashboard.arka.botargento.com.ar` provisioned ("Arka Systems · Panel de
+  reportes"): VERTICAL=outbound-sales, color `#d99b2f` (logo amber), TZ Europe/Madrid,
+  locale patched es-AR→es-ES (script hardcodes es-AR), logo.svg mounted, migrations 0000–0003,
+  7/7 views, `dashboard_app` reads `outreach.v_*` (GREEN badge data confirmed). Allowlist:
+  Jonatan (admin) + hola@arkasystems.es (viewer). 📘 Gotchas: `provision-tenant.sh` runs ON
+  the VPS (checks `/opt/n8n/<t>` locally; stage as `/tmp/dashrepo/{scripts,migrations}`);
+  manual recreates MUST pass `--env-file dashboard.env` or `TENANT_DB_URL` loses its password
+  (28P01 boot loop).
+
+### Updated 2026-09-04 — REAL CAMPAIGN LAUNCHED (stage: Live)
+
+- Flow v3 shipped 2026-09-03 (client change): dolor → per-pain reply + **Veámoslo** button →
+  contact promise + IG + **Visitar la web** cta_url (arkasystems.es); **T1 handoff fires on the
+  Veámoslo tap**. Calendar link dropped. Deployed via the **n8n-deployer agent** (40 sim checks,
+  live patch). Test campaigns 1–4 all validated E2E (resets via the documented procedure).
+- **Campaign 5 `clinicas-barcelona-2026-09` ACTIVE**: 277 seeded from the stamped CSV (0 skipped,
+  category split verified), cap 15/day, window **10:00–12:00 Europe/Madrid, Mon–Fri**, image
+  header. Launch pre-flight: quality GREEN TIER_250, templates APPROVED, suppression empty.
+  First sends **Monday 2026-09-07 10:00** (activation happened after Friday's window).
+  ~19 business days at cap 15; consider raising toward 30–50 after week 1 if GREEN.
+  Kill switch: `status='paused'` on campaign 5.
+- ✅ Dashboard redeployed to the latest inbox build (dashboard-deployer agent): image
+  `dff4119f` → `f1cbed82` (commit `69ecf86`), gates green, `--env-file` respected, migration
+  `0004_inbox_read_state` applied, smoke tests pass, other tenants untouched, school-WIP preserved.
+
+### Updated 2026-09-09 — first-week incident + wizard/router hardening
+
+- **Incident (wa_id 34669365849, FiMov Les Corts, fisio):** the clinic's own WhatsApp
+  auto-responder replied to the template → wizard treated it as engagement → **bot-vs-bot loop**
+  (13 identical "No he entendido" re-asks in ~2 min). Later a human wrote *"Que no nos interesa"* —
+  the router's exact opt-out tokens didn't match it, wizard re-asked again. Number manually
+  suppressed same day (suppression row + recipient 52 → `opted_out`).
+- **Patches deployed** (n8n-deployer agent): router regex fallback for negative-interest opt-outs
+  (`/\bno\b.{0,20}\binteres\w*/`, "no gracias"), and a wizard **consecutive-miss guard**
+  (`guided_misses`: 1 re-ask → 1 final message with buttons → `dormant` step that stays silent on
+  unrecognized input, resumes on any valid option). Full write-up: `outbound-sales.md` §Router
+  field lessons — **apply both to every outbound tenant** (ventas/tasty/artbox still have the
+  naive versions).
+
+### Updated 2026-09-16 — "Meta provider" mode + Chatwoot mirror (bot OFF)
+
+- Client decision: Arka owns the conversation in **their Chatwoot** (`tasty-chatwoot.2pebut.easypanel.host`,
+  account 1, inbox 2 `Channel::Api`); we send templates, mirror both directions, alert on first
+  reply, keep opt-out/suppression. Campaign 5 paused by the client meanwhile. Test campaign 6
+  (`ecommerce_v11`, lang `es`, no header) with the 2 internal numbers.
+- Built (n8n-deployer, 12/12 ACTIVE): `v2-chatwoot-bridge` `Fkv348hOv4BxHUJL` (sub-workflow,
+  anti-echo marker `content_attributes.mirror='botargento'`), `v2-chatwoot-webhook`
+  `fVErzqE1JuH8awuk` (`/webhook/chatwoot?token=` → inbox `send` → private note on 409/502),
+  router `ARKA_CONVERSATION_MODE=chatwoot` (silent `suppress_send` + mirror + first-reply T1),
+  runner template mirror. Env whitelisted + container recreated. Pattern write-up:
+  `outbound-sales.md` §"Provider mode + Chatwoot mirror". Client guide:
+  `docs/ventas/chatwoot-guia-esteban.md`. Full log: `infra-status.md` 2026-09-16.
+- Backport docs for ventas/tasty (opt-out regex + anti-loop) still pending execution from their sessions.
+
+### Pending (next sessions)
+
+0. Finish the Chatwoot E2E test with Jonatan + Esteban (template → mirror → reply → agent reply →
+   opt-out → 24h note), clean campaign 6, then Arka decides when to resume campaign 5
+   (`status='active'`, cap 15). v2 items: media attachments, templates from Chatwoot.
+1. Week-1 review with Arka (reply rate, per-category split) → raise cap toward 30–50 if GREEN.
+2. Backport opt-out regex + anti-loop guard — specs ready, execute from each tenant's session:
+   ventas (FULL backport: router+wizard+sender+persister, live-drift protocol inside) →
+   `bot-argento-sales\Sales Automation\docs\ventas\backport-2026-09-optout-antiloop.md`;
+   tasty (router regex ONLY — its button-wizard can't loop by design) →
+   `TastyLivingSoil\Tasty Automation\docs\ventas\backport-2026-09-optout-regex.md`.
+   artbox: not requested yet — same analysis needed (which wizard pattern does it use?).
+3. Later: 2nd checknumber batch (540 landlines + metro area), other cities (Madrid/València).
+
+### References for Arka Systems
+
+- Flow doc: `…\ArkaSystems Automation\docs\ventas\flujo-campana-clinicas.md` (+ `.html`)
+- Infra status: `…\ArkaSystems Automation\docs\ventas\infra-status.md`
+- Scraping report (client-facing): `…\ArkaSystems Automation\docs\ventas\REPORTE_Relevamiento_Barcelona.md`
+- Spain field-learnings: `references/botargento-scraping.md` §España / Barcelona
+
+## Aurelio Ski
+
+**Stage:** Discovery — rental de equipos de ski en **Bariloche**; primer tenant del vertical
+**rental/turismo**. Bot **inbound** (no outbound). Dolor declarado: el volumen de consultas
+diarias por WhatsApp compite con la atención en mostrador.
+
+**Workspace:** `C:\Desarollo\jperez\aurelioski\Aurelio Ski Automation\`
+
+### Confirmed at session 2026-08-18 (workspace + propuesta)
+
+- ✅ Workspace scaffoldeado (convención estándar; engine dirs = placeholders con README).
+- ✅ **Propuesta v1** en `docs/aurelio-ski/propuesta.md` — dolor→solución, flujo ejemplo,
+  showcase de los 4 bots vivos como prueba, tabla de alcance, plan 3 semanas, **inversión en
+  placeholders (Jonatan completa)**, CTA con demo pre-firma opcional.
+- Slug propuesto `aurelioski`; es-AR; TZ AR. Pendientes clave en el `infra-status.md` del
+  workspace: precio, número WhatsApp (nuevo vs migrado), vertical `rental` para el dashboard
+  (intents draft: disponibilidad, precios, equipos/talles, horarios, seña/reserva), opcional
+  portugués (turismo brasileño), timing vs temporada.
+
+### Updated 2026-08-19 — propuesta FINAL (aprobada por Jonatan)
+
+- ✅ Precios confirmados: **setup bonificado ($0) · $100.000/mes · primer mes 50% ($50.000)**.
+- ✅ Versión HTML brandeada (patrón flow-doc Arka, acento dorado Bot Argento) + **PDF listo
+  para enviar** (`Propuesta-AurelioSki-BotArgento.pdf`).
+- ✅ Mockup corregido en revisión de Jonatan al **flujo real de la plataforma**: menú principal
+  numerado (1 Alquiler de equipos · 2 Clases de ski · 3 Horarios y ubicación · 4 Otra
+  consulta) → wizard con botones (equipos → personas → fecha) → resumen + notificación al
+  equipo. **Ese menú es el draft de intents del vertical `rental`.**
+- Próximo: Jonatan la envía → registrar fecha de envío acá para el follow-up. Si piden el
+  demo pre-firma (CTA de la propuesta): wizard rental de 4-5 pasos en número de prueba.
+
+## Miguelez Propiedades
+
+**Stage:** Discovery — pendiente. Inmobiliaria, vertical **real-estate** (el mismo de
+`client1` — no hace falta vertical nuevo en el dashboard ni wizards nuevos: se reutilizan
+`v2-inventory-wizard` / `v2-tasaciones-wizard` / `v2-admin-propietarios` /
+`v2-otras-consultas` / `v2-emprendimientos`). Bot **inbound**.
+
+**Workspace:** `C:\Desarollo\jperez\miguelezpropiedades\Miguelez Automation\`
+(docs en `docs/miguelez/`).
+
+### Confirmed at session 2026-09-09 (scaffold + docs de discovery)
+
+- ✅ Workspace scaffoldeado (convención estándar; engine dirs = placeholders con README;
+  `.gitignore` del patrón Plec — `handoff/*` y `**/.env` ignorados).
+- ✅ `docs/miguelez/infra-status.md` — estado + tabla de datos faltantes + pendientes.
+- ~~✅ `docs/miguelez/discovery.md` — checklist de discovery inmobiliaria en 9 bloques (negocio,
+  dolor textual, canales/volumen, mix de operación, inventario, derivación, Meta/WABA, marca,
+  decisión).~~ Reestructurado el mismo día — ver entrada siguiente.
+- ✅ `docs/miguelez/propuesta.md` — **borrador v0** patrón Aurelio Ski: problema → solución →
+  mockups con el **flujo real de `client1`** (menú numerado 1 Ventas · 2 Alquileres ·
+  3 Tasaciones · 4 Emprendimientos · 5 Administración/Propietarios · 6 Otras consultas → wizard
+  zona → tipo → habitaciones → rango → resultados → botones Solicitar visita / Hablar con un
+  asesor / Nueva búsqueda → franja horaria; tasación 6 pasos) → ejemplo de notificación al
+  asesor → alcance → plan 3 semanas → **inversión default de plataforma (setup $0 ·
+  $100.000/mes · 1er mes $50.000, a confirmar por Jonatan)**. Placeholders `[[COMPLETAR]]`
+  donde faltan datos del cliente.
+- ✅ `docs/miguelez/meta-checklist.md` — checklist WABA completo (pre-requisitos → BM → embedded
+  signup vía backend Tech Provider → número → display name → verificación de negocio →
+  template handoff con botones byte-exactos → webhook override → prueba e2e → quality baseline).
+- Slug propuesto `miguelez`; es-AR; TZ AR (a confirmar según ciudad).
+- **No hay datos del cliente**: contacto, ciudad, volumen, inventario, Meta/WABA, número
+  actual — todo pendiente en `discovery.md`.
+
+### Confirmed at session 2026-09-09 (segunda sesión — checklist del flujo)
+
+- ✅ **Decisión de Jonatan: nada en el VPS todavía.** Primero se documenta con el cliente qué
+  flujo quiere; recién después se despliega.
+- ✅ `docs/miguelez/flujo-checklist.md` — **nuevo**. Relevamiento de la implementación real de
+  `client1` (router + 5 wizards `v2-*`) convertido en checklist Sí / No / Cambiar para recorrer
+  con el cliente opción por opción. Secciones: §0 comportamiento general (Leia, solo texto,
+  sesión 30 min, "0" = menú, botones ≤3 opciones, franjas 9-12 / 12-14 / 14-18, handoff por
+  email, sin IA libre) · §1 menú principal (6 opciones) · §2 Ventas/Alquileres (zona → tipo →
+  habitaciones → rango → top 3 → visita/asesor/nueva búsqueda → franja) · §3 Tasaciones
+  (7 pasos) · §4 Emprendimientos · §5 Administración/Propietarios · §6 Otras consultas ·
+  §7 derivaciones (cantidad de asesores, número compartido o por asesor, WhatsApp vs email,
+  email de alertas, tabla quién recibe cada área) · §8 inventario (Tokko/Zonaprop/Sheets,
+  exportación CSV/API/XML, cantidad, campos mínimos, frecuencia) · §9 Meta/WABA (BM, verificación,
+  FB/IG, WABA previa, migrar número vs nuevo, display name) · resultado de la reunión.
+  Cada pregunta lleva el copy exacto que manda el bot hoy.
+- ✅ `docs/miguelez/discovery.md` — **reducido a lo comercial** (6 secciones: negocio, dolor,
+  canales/volumen, mix de operación, marca y tono, decisión y timing). Inventario, derivación,
+  Meta/WABA y asesores se movieron a `flujo-checklist.md` para no duplicar; queda una nota
+  cruzada.
+- Método acordado para la reunión: **hablar en vivo con el checklist en mano**, que el cliente
+  pruebe el bot de Bot Argento desde su celular, y cerrar mandándole por WhatsApp el resumen de
+  lo acordado (ese resumen es el spec del wizard).
+- Decisiones que más cambian el trabajo y conviene cerrar primero: (a) qué opciones del menú
+  apagan (Emprendimientos / Administración suelen sobrar), (b) dónde está el inventario y si se
+  exporta, (c) quién recibe cada derivación y si quieren aviso por WhatsApp al asesor (**no
+  existe hoy**), (d) preguntas nuevas en el wizard (ambientes, cochera, mascotas, presupuesto
+  libre) = desarrollo, no configuración.
+
+### Confirmed at session 2026-09-17 (primeras notas del cliente → evaluación + docs)
+
+Notas de Jonatan (charla con el cliente, fecha exacta sin registrar) volcadas en
+`discovery.md`, `flujo-checklist.md`, `propuesta.md` (v1) e `infra-status.md`.
+
+- **CRM Lider PROP** (liderprop.com) es la fuente única del inventario: altas de ventas y
+  alquileres ahí; se replica a Zonaprop y MercadoLibre en 15–30 min; **al reservar se da de
+  baja en el CRM**; 2–3 altas/semana.
+- **Dos líneas de WhatsApp Business (app, sin API)**: Ventas (ventas + alquileres; 2 asesores,
+  línea en celular + PC de cada uno) y Administración de alquileres (contratos/inquilinos;
+  2 asesores).
+- Volumen ventas ~10/día, pico ~50 por una casa buena en alquiler. Administración: "muy alto,
+  10/10". Zonaprop/ML → llegan al **CRM** (el asesor escribe desde el botón de WA del CRM);
+  Instagram → WA de ventas. Tasaciones: parte por teléfono fijo. **Emprendimientos: no manejan.**
+- ✅ **Menú fase 1 (5 opciones)**: 1 Ventas · 2 Alquileres · 3 Tasaciones · 4 Administración
+  de alquileres (**respuesta fija con `wa.me` de la línea de administración**, sin wizard) ·
+  5 Otras consultas (sin Comprar/Alquilar). Fuera: `v2-emprendimientos` y
+  `v2-admin-propietarios` (propietarios que quieren listar entran por Tasaciones 3.6).
+- ✅ Derivación: email + aviso WhatsApp (template, ya existe desde Plec) a los 2 asesores de
+  ventas. (Corrige la nota del 2026-09-09: el aviso por WhatsApp al asesor **sí existe**.)
+- ✅ Inventario: **objetivo = feed/API de Lider PROP → workflow de sync nuevo →
+  `automation.inventory`** (reemplaza el nodo Sheets de `v2-sync-inventory`). Planilla manual
+  descartada (las bajas por reserva llegarían tarde). Scraping de portales solo como último
+  recurso. **Jonatan pide acceso a Lider PROP.**
+- ⚠️ **Decisión abierta — la línea de ventas** (`flujo-checklist.md` §10): migrarla a la API
+  deja sin app a los 2 asesores en ese número; número nuevo deja al bot sin tráfico; coexistencia
+  app + API de Meta a verificar. Recomendación inicial: migrar + aviso WA a los asesores.
+- **Fase 2 (upsell, no en el alcance):** bot propio en la línea de administración — el dolor
+  más grande. Add-on posible si Lider PROP tiene webhooks: aviso WA por cada lead nuevo del CRM
+  (hoy "entran al CRM todos los días").
+
+### Pending (next sessions)
+
+1. **Jonatan** — acceso a Lider PROP: confirmar feed/API, token, campos (zona, tipo,
+   habitaciones/ambientes, precio, moneda, link, estado reservada).
+2. **Jonatan + cliente** — cerrar §10 (línea de ventas). Verificar coexistencia app + API en
+   docs de Meta antes de ofrecerla.
+3. Completar placeholders de `propuesta.md` (dolor textual, ciudad/zonas, número admin, nombre
+   del asistente), confirmar pricing (¿sync Lider PROP dentro del setup o aparte?) → render
+   HTML + PDF → **Jonatan envía**.
+4. Al firmar: DNS `miguelez` → `n8n-deployer` (tenant `miguelez`, vertical `real-estate`,
+   **sync Lider PROP** en lugar de Sheets, redirección Administración) → `dashboard-deployer` →
+   `meta-checklist.md`.
 
 ## How to add a new tenant to this file
 

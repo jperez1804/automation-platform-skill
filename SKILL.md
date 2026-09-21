@@ -13,7 +13,7 @@ This skill puts you in full context of the **vertical-agnostic WhatsApp automati
 
 Everything else — n8n workflows, Postgres `automation` schema, Next.js dashboard, Hono Meta backend, Hostinger VPS topology, deploy pipeline — is shared.
 
-**Outbound companion.** The platform now also has an **outbound** sibling — **Bot Argento Sales** — the mirror image of the inbound engine: it cold-messages prospects with a Meta template that earns a reply, then the existing router + a pitch wizard qualify them in-window. Built first as Jonatan's own client-acquisition tool, and designed to be **sold to clients as an "outbound campaigns" add-on**. See `references/outbound-sales.md`. The **front of that funnel** is the **botargento-scraping** module — it scrapes prospect numbers from the public web, validates which are real WhatsApp accounts, and emits the CSV that seeds `outreach.recipients`. See `references/botargento-scraping.md`.
+**Outbound companion.** The platform now also has an **outbound** sibling — **Bot Argento Sales** — the mirror image of the inbound engine: it cold-messages prospects with a Meta template that earns a reply, then the existing router + a pitch wizard qualify them in-window. Built first as Jonatan's own client-acquisition tool, and designed to be **sold to clients as an "outbound campaigns" add-on**. See `references/outbound-sales.md`. A tenant can also buy that outbound half **without our bot** — "provider mode": we send the templates and own opt-out/suppression, while the conversation lives in the client's own helpdesk (Chatwoot), mirrored both ways. First sold to arka; see `references/chatwoot-mirror.md`. The **front of that funnel** is the **botargento-scraping** module — it scrapes prospect numbers from the public web, validates which are real WhatsApp accounts, and emits the CSV that seeds `outreach.recipients`. See `references/botargento-scraping.md`.
 
 ## The four pillars
 
@@ -41,6 +41,27 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Per-tenant onboarding state — who's at which pipeline stage (`client1`, `plec`, …) | `references/tenants-status.md` |
 | Outbound sales / cold-outreach campaigns, opt-in & ban-avoidance rules, the campaign runner, the `outreach.*` schema, the sellable add-on | `references/outbound-sales.md` |
 | Sourcing/scraping prospect WhatsApp numbers from the web (the lead-gen leg that feeds outbound) — scrapling MCP, Cylex/Google Maps, AR phone classification, checknumber.ai validation, the seed-ready CSV | `references/botargento-scraping.md` |
+| **"Provider mode"** — the client owns the conversation in **their own helpdesk (Chatwoot)** and we only send templates + keep opt-out: the bot-silent router flag, the mirror bridge, the webhook back, attachments both ways, the suppression gate, per-tenant install checklist | `references/chatwoot-mirror.md` |
+| Engine upgrades shipped 2026-09 (post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists), **porting them to another tenant**, the tenant-config deployer (`patch-tenant-live.mjs` + `tenants.json`) | `references/whatsapp-automation.md` §Conversational upgrades, then `whatsapp-automation-claude/PORTING-conversational-upgrades.md` |
+| **Defaults every new automation must ship with** — the advisory lock that doesn't serialize, burst grouping (+ the `Inbound Ready` contract), the anti-loop `dormant` guard and silent turns, never dead-ending a lead (price intent, free-text handoff), opt-out regex | `references/whatsapp-automation.md` §Conversation hardening |
+
+## Agents
+
+Four named subagents live in `agents/` of this skill and are exposed **globally** through the
+junction `~/.claude/agents` → `~/.claude/skills/automation-platform/agents`, so they are available
+from any project/session (each new client is a new working directory). Invoke by name
+("usá el agente `campaign-ops`…") or let Claude pick them from their descriptions. Each agent loads
+its own references — the caller does not need to have this skill loaded.
+
+| Agent | Use it for | Writes? |
+|---|---|---|
+| `campaign-ops` | Outbound campaign status, funnel reports, queue/cap questions, recipient lookups | No — SELECT only, proposes SQL |
+| `dashboard-deployer` | Ship the shared dashboard image to ONE tenant (selective commit → CI → `docker-compose --env-file` → smoke) | Yes, scoped to the named tenant |
+| `n8n-deployer` | Per-agency `_src` → `build.mjs` → `patch-wizard-live.mjs`; engine repo `patch-tenant-live.mjs <tenant> <target>` (`tenants.json`; structural router upgrades — audio, grouping, post-handoff window — and porting them); router/wizard/runner patches, n8n API gotchas | Yes, in-place patch of existing workflow ids (structural targets insert nodes; never re-import) |
+| `tenant-onboarder` | New client: workspace scaffold, discovery notes, proposal (structured-menu mockups + pricing), Meta checklist, `tenants-status.md` | Yes, only in the agency workspace + tenants-status |
+
+Edit the `.md` files in `agents/` (they are versioned with this repo); the junction makes the change
+visible immediately. Don't put agents anywhere else.
 
 ## n8n MCP cross-references
 
@@ -52,10 +73,11 @@ When the work involves writing or editing n8n workflows, also consult these `n8n
 - `n8n-mcp-skills:n8n-node-configuration` — operation-aware field configuration
 - `n8n-mcp-skills:n8n-mcp-tools-expert` — guidance for the n8n MCP itself
 
-## Two non-negotiable platform invariants
+## Three non-negotiable platform invariants
 
 1. **The `automation.*` Postgres schema is fixed across every agency.** Same DDL: `session_memory`, `lead_log`, `escalations`, `inventory`. New verticals add **views** (`automation.v_<vertical>_*`) on top, not new tables. The dashboard reads only views; the n8n router writes to the four base tables.
 2. **The dashboard never writes to `automation.*`.** Enforced at the DB-role level — `dashboard_app` user has SELECT-only on `automation.*`, full access to `dashboard.*`. Any attempt to insert/update/delete in `automation.*` from the dashboard is a bug.
+3. **No conversation may dead-end or loop.** Every tenant ships the hardening defaults in `references/whatsapp-automation.md` §Conversation hardening: burst grouping, the consecutive-miss `dormant` guard with silent turns, opt-out regex on top of exact tokens, and a wizard that answers price intent and hands off free-text questions instead of repeating the menu. A lead who asks something the script didn't anticipate must reach a human, never "No te entendí" twice.
 
 ## Per-agency artifacts directory (workspace convention)
 

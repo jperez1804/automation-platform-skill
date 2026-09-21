@@ -33,7 +33,9 @@ import urllib.request
 import urllib.error
 
 API_BASE = "https://api.checknumber.ai/v1"
-MIN_BATCH = 100
+MIN_BATCH = 500  # documented floor (raised from 100, 2026-07-01) but UNRELIABLE: a 165-number
+# job (Arka Systems/Sevilla, 2026-09-16) was accepted and billed with no invalid_batch_size
+# rejection. Treated as advisory only below -- the API is the actual gate, not this constant.
 
 
 def die(m):
@@ -145,11 +147,13 @@ def main():
             die("no numbers parsed from input")
         real = list(nums)
         if len(nums) < MIN_BATCH:
-            if not a.pad:
-                die(f"only {len(nums)} numbers; checknumber needs >= {MIN_BATCH}. "
-                    f"Accumulate more mobile candidates, or pass --pad (wastes credits).")
-            nums = nums + fillers(set(nums), MIN_BATCH - len(nums))
-            print(f"padded to {len(nums)} with synthetic fillers (excluded from output)")
+            if a.pad:
+                nums = nums + fillers(set(nums), MIN_BATCH - len(nums))
+                print(f"padded to {len(nums)} with synthetic fillers (excluded from output)")
+            else:
+                print(f"WARNING: only {len(nums)} numbers, below the documented {MIN_BATCH} floor. "
+                      f"That floor has proven unreliable (see 2026-09-16 field note) -- submitting "
+                      f"as-is and letting the API decide. A rejection here is pre-billing (no charge).")
         txt = "\n".join(nums) + "\n"
         job = post("/tasks", {"task_type": "ws"}, {"file": ("numbers.txt", txt)})
         tid = job.get("task_id") or job.get("id") or die(f"no task_id: {job}")

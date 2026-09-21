@@ -17,3 +17,7 @@ desktop.ini
 *credentials*.json
 *service-account*.json
 *secret*
+
+# Python
+__pycache__/
+*.pyc

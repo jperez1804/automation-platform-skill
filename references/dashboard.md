@@ -78,8 +78,11 @@ Each vertical declares its capabilities via an optional `features` object. The d
 
 ```ts
 export type VerticalFeatures = {
-  providersTab?: boolean;   // /providers route + sidebar item, queries automation.v_providers
-  laborPoolTab?: boolean;   // /labor-pool route + sidebar item, queries automation.v_labor_pool
+  providersTab?: boolean;     // /providers route + sidebar item, queries automation.v_providers
+  laborPoolTab?: boolean;     // /labor-pool route + sidebar item, queries automation.v_labor_pool
+  campaignsTab?: boolean;     // /campaigns route — read-only OUTBOUND funnel, queries outreach.v_*
+  botResolutionKpi?: boolean; // Panel "Resueltas por el bot" tile. Default-ON (undefined=show);
+                              // set false where a handoff IS the goal (outbound-sales).
 };
 ```
 
@@ -87,9 +90,21 @@ Current declarations:
 
 | Vertical | features |
 |---|---|
-| `real-estate` | (omitted — no extra features) |
-| `architecture` | `{ providersTab: true, laborPoolTab: true }` |
+| `real-estate` (client1) | (omitted — no extra features) |
+| `architecture` (plec) | `{ providersTab: true, laborPoolTab: true }` |
+| `outbound-sales` (ventas) | `{ campaignsTab: true, botResolutionKpi: false }` (since 2026-06-10) |
 | `services` (future) | `{ laborPoolTab: true }` only — no formal supplier directory |
+
+**Cross-schema feature (`campaignsTab`).** Unlike the other tabs (which read `automation.v_*`), the
+`/campaigns` page reads the **`outreach.v_*`** views (`v_campaign_stats`, `v_outreach_overview`,
+`v_campaign_daily`, `v_quality_current`) + the `outreach.quality_log` table — the outbound funnel for
+the ventas tenant. This required: (a) a dashboard migration **`migrations/0003_outreach_grants.sql`**
+that conditionally `GRANT`s `SELECT` on `outreach.*` to `dashboard_app` (no-op for tenants without the
+schema), applied as superuser by `provision-tenant.sh`; and (b) **NOT** adding these to
+`REQUIRED_VIEWS` / `verify-view-compat.mjs` (automation-only, boot-verified — would crash other
+tenants). Read-only still holds: `dashboard_app` is SELECT-only on `outreach.*` too. The page is
+v1-read-only (no campaign controls — those stay in SQL + the n8n runner; see `outbound-sales.md`).
+The quality badge is fed by an n8n Graph poll, not the dashboard (the dashboard never calls Meta).
 
 When adding a new feature flag:
 

@@ -30,9 +30,24 @@ in-window replies are free).
 | `v2-persist-session-and-logs.json` (already dual-mode template handoff) | `v2-campaign-runner.json` (the outbound workflow) |
 | `v2-error-handler.json` | `v2-ventas-wizard.json` (the pitch; self-sales-specific) |
 | router skeleton (verify/normalize/dedup/lock/session) | router opt-out branch → `outreach.suppression` |
+| | `v2-quality-poll.json` (Graph→`outreach.quality_log`, every 6 h) |
+| | `v2-outreach-reconcile.json` (funnel state from `lead_log`+`suppression`, every 5 min) |
+| | read-only dashboard `campaignsTab` (see `dashboard.md`) |
 
-No shared-engine edits: the campaign-runner sends templates via its **own** HTTP node, so the shared
-sender stays generic.
+The shared sender stays generic — but gained one **backwards-compatible** branch: a `wa_message`
+passthrough (send a full Meta payload verbatim if present, else the buttons/text ternary), so the
+ventas wizard can emit the in-window `cta_url` showcase. Worth upstreaming.
+
+**Live state (verified 2026-07-30):** infra fully operational — real sales number
+(`+54 9 11 2558-9239`), templates approved, dashboard live (`dashboard.ventas.botargento.com.ar`),
+all 8 workflows ACTIVE, quality GREEN. The **first real campaign** (`arquitectura-zonasur-2026-06`,
+87 architecture studios, 15/day) ran 2026-06-11 → 2026-06-19 and **finished: 12 replied (13.8%),
+4 opted out, 71 no-reply**. A 1-recipient demo campaign (2026-06-21) converted **Tasty** into a live
+Phase-B tenant. Since then the runner is active but **starved (0 pending recipients)** — Phase A did
+its job and effort moved to Phase-B client tenants (Tasty, ArtBox, Arka). Inbound still works
+organically (leads through 2026-07-25).
+**Note:** the campaign-runner must be **activated** (its schedule) for hands-off daily sending — manual
+`Execute workflow` only fires once.
 
 ## `outreach.*` schema (honors invariant #1)
 
@@ -64,7 +79,24 @@ campaign vertical is known) → `hoy` (how they handle WhatsApp today) → showc
 mode). Personalization via the `Read Recipient` node is **TTL-proof** (doesn't depend on
 `session_memory`, which expires at 30 min).
 
-**UX revision (2026-06-08):** the `intro` re-ask is **skipped** for campaign prospects (a
+**Flow v3 (2026-09, current).** Steps: `intro` → `rubro` (**always asked** — the campaign vertical
+no longer skips it) → `hoy` → `interes` (pain: "2 a 3 horas por día contestando lo mismo" + "un lead
+que espera más de 5 minutos se enfría", single «Veámoslo» button) → `oferta` (showcase + promo, reply
+button) → `handoff` (confirmation + web cta_url). **Handoff + email alert fire on the offer tap**,
+not when the showcase is shown. Plus the hardening defaults: `dormant` anti-loop guard,
+`guided_ventas_precio` (price answer + handoff) and `guided_ventas_consulta` (free-text handoff), and
+burst grouping. Meta button titles are capped at **20 chars** ("Estudio Arquitectura", "Quiero un mes
+gratis" are exactly 20).
+
+**Pricing ladder (2026-09-16).** The wizard quotes a ladder and hands off rather than a single
+number: Atención 100.000 · Atención + Audios 140.000 · Cierre 200.000 (adds follow-up of inquiries
+that didn't close) · a-medida from 300.000 (own-CRM integration) · Bot de Ventas +100.000 as an
+add-on. First month free, install included. For an inmobiliaria the outbound bot is the *add-on*,
+not the pitch — they want inbound + audio + follow-up + CRM. Keep `PRICE_TEXT` in `_src/ventas.js`
+and the landing (`BotArgentoLandingPageRepo`) in sync; they contradicted each other for a day
+("50 % OFF" vs "primer mes GRATIS").
+
+**UX revision (2026-06-08, superseded by v3 above):** the `intro` re-ask is **skipped** for campaign prospects (a
 `Read Recipient` row exists) or affirmative entries — tapping the cold template's `Ver ejemplo`
 goes straight to `hoy` instead of re-asking "¿te muestro?". The old `demo` Sí/Después step is gone:
 after `hoy`, `buildShowcaseHandoff` sends an **in-window `cta_url` interactive message** (free — no
@@ -80,6 +112,45 @@ Router (`_src/router-determine-route.js`): no numbered menu — everything → v
 unambiguous opt-out tokens (`PARA`/`BAJA`/`STOP`/`cancelar`/`no me interesa`/...) → `optout` → router
 writes `outreach.suppression` + confirms. (Bare "no" is intentionally NOT an opt-out token — it's a
 valid wizard answer.)
+
+**⚠ Two field lessons from Arka's first real campaign day (2026-09-09, wa_id 34669365849 "FiMov"):**
+
+1. **Exact-token opt-out matching is not enough.** A human wrote *"Que no nos interesa"* — no token
+   matched (`no me interesa` ≠ `no nos interesa`) and the wizard re-asked the pitch question at
+   someone who had just said no. Fix (deployed on arka, apply to every outbound tenant): after the
+   exact-token check, add a **regex fallback for negative-interest phrasings** — e.g.
+   `/\bno\b.{0,20}\binteres\w*/` (covers "no me/nos interesa", "no estamos interesados", leading
+   "que...") and `/\bno\b[,.\s]{0,3}gracias\b/`. Bias toward suppression on ambiguity: compliance
+   rule #3 says suppression is absolute — a false-positive opt-out is safer than messaging a no.
+   Bare "no" must still NOT opt out.
+2. **Clinics/SMBs run their own WhatsApp auto-responders → bot-vs-bot loops.** FiMov's booking bot
+   auto-replied to the template; our wizard treated it as engagement, and each "No he entendido"
+   re-ask triggered another canned auto-reply — **13 identical round-trips in ~2 minutes**. Any
+   naive re-ask branch will loop against an auto-responder. Fix (deployed on arka): a
+   **consecutive-miss guard** (`guided_misses` in the qualification snapshot) — miss 1 re-asks,
+   miss 2 sends one final polite message re-showing the option buttons and parks the session in a
+   `dormant` step, where unrecognized input produces **no outbound at all** (inbound still logged)
+   and any valid option/affirmative resumes the script and resets the counter. Also note the
+   auto-reply signature for triage: inbound arriving seconds after template delivery with long
+   canned text ("Gracias por contactar...", horario, etc.) is a machine, not a reply.
+3. **The router's per-contact lock does not serialize, and auto-responders expose it.** Two messages
+   439 ms apart produced two identical replies on ventas (2026-09-17) and left `guided_misses` at 0,
+   so the miss guard never counted. `pg_advisory_lock` is session-scoped on a pooled connection
+   (re-entrant), and `Release Advisory Lock` never runs. The fix that works today is **burst
+   grouping** — every message waits ≥4 s before consuming. Full write-up and the rest of the
+   defaults: `whatsapp-automation.md` §Conversation hardening. Ventas' port lives in
+   `Sales Automation/scripts/burst/` (`burst-nodes.mjs` is the single source of the 10 nodes,
+   `harness-burst.mjs` has 65 assertions).
+4. **A lead who asks something off-script must not get the menu back.** *"Enviame valores y lo
+   evaluo"* at an option step got *"No te entendí"* + the brochure again, and no alert fired because
+   handoff only triggered on a button tap; the lead sat unanswered five days. Every outbound wizard
+   now answers **price intent** with the real numbers at any step and hands off, and treats free text
+   that looks like a question (`?` or ≥3 words) at a warm step as a handoff with the lead's words
+   quoted — both gated by an auto-responder blocklist so machines don't page a human.
+5. **Ops: multi-statement `psql -c` is one implicit transaction.** `psql -c "INSERT; UPDATE;
+   DELETE"` rolls back EVERYTHING if any statement errors — even after printing `INSERT 0 1`.
+   A manual suppression "applied" this way silently vanished when a later statement failed.
+   Run critical writes as separate `-c` calls (or explicit BEGIN/COMMIT) and re-SELECT to verify.
 
 **Quick-reply template buttons (2026-06-08):** if the cold template uses quick-reply buttons (e.g.
 `Ver ejemplo` / `No me interesa`) instead of a "Respondé SÍ/PARA" text CTA, taps arrive as
@@ -101,12 +172,33 @@ message). Flow: build CSV (`wa_id,business_name,contact_name,vertical,source,opt
 (create `paused`) → `status='active'` → runner sends under cap/window → watch `quality_rating`, ramp
 30–50/day → `status='paused'` kill switch.
 
+## Funnel reconciliation (`v2-outreach-reconcile.json`, 2026-06-10)
+
+**The gap it fills:** a prospect's reply flows through the shared engine into `automation.lead_log` /
+`session_memory`, but **nothing was updating `outreach.recipients.status` to `replied`** — so the
+dashboard funnel (reply rate, "Respondieron") sat at 0 even after real replies. Rather than surgery on
+the live router, a small **scheduled reconciler** (every 5 min) derives the terminal funnel states from
+the source-of-truth tables: `replied` = recipient still `sent/delivered/read` with an inbound
+`lead_log` row at/after `last_send_at`; `opted_out` = recipient whose `wa_id` is in
+`outreach.suppression`. Idempotent, no params, no router risk; ~5-min lag (fine for an observability
+dashboard). Standalone workflow like the quality poll — imported/wired/activated via the same scripts.
+(`sent → delivered → read` still need Meta status webhooks, which remain deferred.)
+
 ## Scripts
 
-`build.mjs` (targets `ventas` / `campaign-runner` / `router`), `import-n8n.mjs`,
-`set-error-workflow.mjs`, `patch-wizard-live.mjs` (manifest-based, no hardcoded ids), and
-`seed-recipients.mjs` (CSV → SQL emitter; **refuses rows without `opt_in_basis`**). No
-`patch-persister-template.mjs` — the copied persister is already template-capable.
+`build.mjs` (targets `ventas` / `campaign-runner` / `router`), `import-n8n.mjs` (idempotent; ORDER list
+includes quality-poll + reconcile), `wire-n8n.mjs` (REST: creates the `Postgres Ventas` credential +
+attaches to all Postgres nodes + wires the router's executeWorkflow ids — replaces manual MCP wiring;
+n8n 2.x credential gotcha: `sshTunnel:false` present, `ssh*` fields ABSENT), `set-error-workflow.mjs`,
+`patch-wizard-live.mjs` (manifest-based, no hardcoded ids; patches a Code node in place without
+re-import — structural changes like a new node still need re-import or a manual PUT),
+`seed-recipients.mjs` (CSV → SQL; **refuses rows without `opt_in_basis`**), and `set-opt-in-basis.mjs`
+(stamps one defensible basis onto a scraped CSV before seeding). No `patch-persister-template.mjs` — the
+copied persister is already template-capable.
+
+**Activation gotcha:** importing/wiring does NOT activate a workflow. The schedule-triggered ones
+(`campaign-runner`, `quality-poll`, `outreach-reconcile`) and the `router` must be POSTed to
+`/workflows/<id>/activate` (or toggled in the UI) or they never fire on their own.
 
 ## Recipient sourcing (botargento-scraping)
 
@@ -121,6 +213,33 @@ defensible basis per batch before anything sends. (`contact_name` is blank unles
 optional free wa.me name-pass — checknumber returns no name.) Discipline: send only validated
 `yes` numbers (fewer failed sends → protects the quality rating) and feed the ramped runner, never
 a bulk blast. The module only writes a CSV — never `automation.*` (invariant #1 holds).
+
+## Provider mode + Chatwoot mirror (first built for arka, 2026-09-16)
+
+Some clients want **our Meta infrastructure but their own inbox**: we send the templates and own
+opt-out/suppression, our bot stays silent, and every message is mirrored into the client's helpdesk
+where their agents answer. **Full playbook: `references/chatwoot-mirror.md`** (architecture, env,
+the three workflows, attachments in both directions, Chatwoot API specifics, install checklist).
+
+In one paragraph: a router flag (`<TENANT>_CONVERSATION_MODE=chatwoot|bot`) turns every non-opt-out
+inbound into a silent `suppress_send` turn that still logs, still reconciles the funnel and still
+fires the T1 first-reply alert; a fire-and-forget bridge sub-workflow mirrors inbound events and sent
+templates into the client's inbox with an anti-echo marker (`content_attributes.mirror`); a webhook
+back from the helpdesk forwards agent replies — and attachments, uploaded to Meta `/media` first —
+through our own `/webhook/inbox`, posting a private note when a send is refused.
+
+- ⚠️ **Compliance, not Chatwoot-specific: the inbox `send` action must check
+  `outreach.suppression`** (403, fail-closed). arka shipped without it and an agent reply reached an
+  opted-out contact (2026-09-16). The dashboard uses the same endpoint, so **any tenant with the
+  two-way inbox** has the gap until patched. **Fixed pattern (2026-09-18, engine repo
+  `v2-inbox-webhook.json`, live on client1):** `Check Window` also returns `suppressed`, reading
+  `outreach.suppression` only if `to_regclass` finds it and through `query_to_xml(format(…))` so the
+  name resolves at run time — one webhook for inbound and outbound tenants. `Gate Window` returns
+  403 before the 24h 409, fail-closed (anything but an explicit `false`). **ventas still runs the
+  old webhook** without it; port that one change there. ventas also logs a burst sent during a
+  takeover as one joined `lead_log` row; client1's `Log Human Inbound` writes one row per message
+  (`human_log_rows` + `jsonb_array_elements`).
+
 
 ## Compliance — the rules that keep the WABA alive
 
@@ -150,5 +269,7 @@ swaps the pitch wizard + template + brand env vars.
 
 ## Status
 
-See `references/tenants-status.md` → **Bot Argento Sales**. As of 2026-06-04: **scaffolded locally,
-not yet on the VPS, no WABA**.
+See `references/tenants-status.md` → **Bot Argento Sales** (state lives there; this file is
+architecture). As of 2026-07-30: **live, Phase A complete, outbound idle** — campaign 1 finished
+2026-06-19 (12/87 replied), no new campaign seeded since; inbound half + dashboard operational.
+Proposed next feature: two-way inbox (`Sales Automation/docs/ventas/two-way-inbox-plan.md`, not started).

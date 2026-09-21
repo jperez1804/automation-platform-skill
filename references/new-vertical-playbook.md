@@ -215,8 +215,32 @@ For the architecture vertical specifically, lean on the existing skills `fronten
 | `AUTH_EMAIL_FROM` | yes | Resend-verified sender |
 | `RESEND_API_KEY` | yes | Resend API key |
 
+## Conversation hardening (before the tenant sees real traffic)
+
+Non-negotiable per platform invariant #3 — rationale and code in `whatsapp-automation.md`
+§Conversation hardening. Copy from `bot-argento-sales/Sales Automation` (`_src/ventas.js`,
+`_src/router-determine-route.js`, `scripts/burst/`):
+
+- [ ] **Burst grouping**: `runtime-inbound-buffer.sql` applied; the 9-node chain plus a standalone
+      `Inbound Ready` wired between `Check Duplicate` and `Acquire Advisory Lock`. Outbound tenants
+      group **inside** flows too (auto-responders fire two messages at any step).
+- [ ] **`Determine Route` reads `Inbound Ready`**, not `Normalize Event` — otherwise bursts group but
+      only the last message is processed, and an opt-out sent first in a burst is lost.
+- [ ] **Anti-loop guard**: `guided_misses` + `dormant` + `dormant_from`; sender has the
+      `Check Suppress Send` switch; persister skips the outbound row on silent turns.
+- [ ] **Opt-out**: exact tokens **plus** the negative-interest regexes; bare "no" stays a valid answer.
+- [ ] **No dead ends**: price intent answers with real numbers and hands off at any step; free-text
+      questions at warm steps hand off quoting the lead; both gated by the auto-responder blocklist.
+- [ ] **Wizard contract**: option steps store `guided_options: [{key,label,value}]`, free-text steps
+      `[]`, a handoff leaves `guided_step: 'handoff'`.
+- [ ] **Offline harness** running the real `_src` with stubs, including a burst replay where
+      `Normalize Event` carries **only the last message**.
+
 ## Smoke test checklist (after provisioning)
 
+0. Send **two messages within two seconds** → exactly one reply ~4 s later, and one `lead_log`
+   inbound row **per message**. Then send an off-script question ("cuánto sale?") → real numbers +
+   handoff alert, never "No te entendí".
 1. Dashboard reachable at `https://dashboard.<clientN>.botargento.com.ar` (TLS auto-issued by Traefik)
 2. Magic-link login works (Resend deliverability — check Resend dashboard for sent events)
 3. First admin can promote others via `/settings` (or via SQL UPDATE for existing tenants)

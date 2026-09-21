@@ -113,18 +113,33 @@ flowchart TD
 
 ## Execution order (per inbound message)
 
+Steps marked **[2026-09]** are the conversational upgrades — live on client1, not yet on other
+tenants (see §Conversational upgrades below).
+
 ```
 1.  POST /whatsapp/meta fires (Meta webhook)
 2.  Respond immediately with onReceived (don't keep Meta waiting)
 3.  Normalize event — extract text_body, contact_wa_id, message_id, profile_name, message_type
+    [2026-09] + media_id, media_mime_type, is_voice for media (audio stays event_kind 'unsupported')
 4.  Check for duplicate (direction='inbound', message_id) in automation.lead_log
     — if found, short-circuit and exit (idempotency)
+4b. [2026-09] Burst buffer, BEFORE the lock: Peek Session → Plan Buffering → Should Buffer?
+    — buffer: Buffer Inbound (runtime.inbound_buffer) → wait 4 s → Consume Buffer
+      (runtime.consume_inbound_buffer) → Build Grouped Inbound; no rows = another execution
+      answers the group, this one ends quietly
+    — bypass (inside a flow, or a message complete on its own, or any buffer DB error): Bypass Buffer
+    — both converge on Inbound Ready
 5.  Acquire Postgres advisory lock on hash(contact_wa_id)
     — guarantees serialized processing per contact
 6.  Load session from automation.session_memory by contact_wa_id
     — apply SESSION_MEMORY_TTL_MS (default 30 min) — if stale, treat as new session
+6b. [2026-09] Voice note → Is Audio? → Get Media Meta → Size OK? → Download Media → Fix Binary Name
+    → Audio Format OK? → Transcribe (OpenAI) → Resolve Inbound. Every false branch and HTTP error
+    output also lands in Resolve Inbound (exactly one item, lock always released).
 7.  Determine menu selection or resume guided flow
     — main menu 0-5 / admin / restart
+    — [2026-09] post-handoff window (24 h): acknowledge + forward to the advisor instead of the menu
+    — [2026-09] resolve a sentence against the options on screen ("tres habitaciones" → key 3)
 8.  Call appropriate child workflow with { session, normalized_event }
 9.  Child returns shared contract:
     {
@@ -139,14 +154,172 @@ flowchart TD
       matched_listings:         array (optional, from inventory wizard),
       should_update_session:    boolean (false for read-only turns)
     }
+9b. [2026-09] Decorate Reply — prepend "🎤 Escuché: «…»" when a voice note was answered at a
+    free-text step or in the post-handoff window
 10. Call v2-send-whatsapp-message — POST to Meta with reply_text, capture outbound_message_id
+10b. [2026-09] Attach Inbound Context — re-add transcript + absorbed_messages (wizards drop unknown fields)
 11. Call v2-persist-session-and-logs:
     — upsert session_memory (if should_update_session)
+      [2026-09] a handoff stamps last_handoff_at / last_handoff_target / followup_notifications
     — insert lead_log (inbound row)
+      [2026-09] one row per absorbed message of a burst; a transcript is logged as the text
     — insert lead_log (outbound row) with related_message_id linking back
     — if handoff: insert escalations row + send SMTP alert
+      [2026-09] handoff_followup: WhatsApp notification only ("💬 Mensaje adicional del lead"),
+      no escalation row, no email
 12. Release advisory lock
 ```
+
+## Conversational upgrades (2026-09, live on client1)
+
+Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS/` in the engine repo), and **meant to be ported to every tenant**. Procedure: `whatsapp-automation-claude/PORTING-conversational-upgrades.md`. History and rollback ids: `MIGRATION-handoff-followup-client1.md`, `MIGRATION-audio-client1.md`, `MIGRATION-burst-grouping-client1.md`, `_client1_backup/_versions.txt`.
+
+| Upgrade | Behaviour | Cost / requirement |
+|---|---|---|
+| **Post-handoff window** | For 24 h after a handoff, a new message gets "Recibido 👍 …" and is forwarded to the advisor (max 5 notifications per handoff). Acknowledgements ("gracias", "ok 👍") get a reply without paging. `0`, a button or a bare `1`–`6` leave the window. Survives the 30-min session TTL. Logged as `route: handoff_followup`, `handoff: false`, so dashboard handoff rates don't move. | none |
+| **Voice-note transcription** | Voice notes are transcribed (`gpt-4o-mini-transcribe`, `language=es`) inside the per-contact lock and routed like text. Unusable audio (too long, silent, hallucination, any API error) → "No pude entender tu audio", step kept. | `OPENAI_API_KEY` **with prepaid credits**; voice notes are processed by OpenAI (tenant privacy notice) |
+| **Sentence → option resolution** | When a wizard shows a list, `Determine Route` matches the message against the `guided_options` labels (spelled numbers → digits, longest label wins); a lone number counts only when every other word is filler. "tres habitaciones" → 3, "quiero hablar con un asesor" → the advisor option, "Tres de Febrero" stays a zone. Typed text benefits too. | wizards store `guided_options: [{key,label,value}]` |
+| **Burst grouping** | Outside an active flow each message waits 4 s and the newest answers the group: joined text, with restart words and option numbers checked on the last message and keywords on the whole group. Options, restart words, buttons and media close a group at once; max hold 15 s. One `lead_log` inbound row per WhatsApp message. | 4 s on the first reply outside a flow; `runtime` schema (see `postgres-schema.md`) |
+
+**Design rules that made it work** — each one fixed a real bug:
+- Transcribe **inside** the lock. Download + transcription takes 2–6 s; before the lock, a voice note and a typed "2" are processed out of order.
+- Audio stays `unsupported` until a transcript exists; otherwise an empty text reaches a free-text step and hands off an empty request.
+- Wizards rebuild their output field by field, so anything added before routing is re-attached after the sender.
+- Wizards accept only a number or an exact label, so sentence matching lives once in `Determine Route` instead of in each wizard. **This was caught by the real-WhatsApp smoke test, not by unit tests** — always smoke-test voice answers at option steps.
+- Normalize spoken numbers only against options on screen, or the barrio "Once" becomes option 11.
+- The buffer's Postgres nodes send errors to `Bypass Buffer`: a DB problem degrades to one-by-one processing, never to dropped messages.
+- n8n's Postgres node emits `{success: true}` for a zero-row result, so "nothing absorbed" is detected by inspecting rows.
+
+**Wizard contract requirements added** (check before porting): option steps store `guided_options: [{key, label, value}]`, free-text steps store `guided_options: []`, and a handoff leaves `guided_step: 'handoff'`.
+
+**Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
+
+## Conversation hardening (defaults for EVERY new automation, 2026-09-17)
+
+These five behaviours started as fixes on the outbound tenant (`ventas`) after real incidents. They
+are **not vertical-specific**: ship them with any new tenant, inbound or outbound. Working
+implementation to copy: `bot-argento-sales/Sales Automation/n8n/wizards/_src/ventas.js`,
+`_src/router-determine-route.js` and `scripts/burst/`.
+
+### 1. ⚠ The per-contact advisory lock does NOT serialize concurrent executions
+
+`Acquire Advisory Lock` runs `SELECT pg_advisory_lock(hashtext($1))`. That is a **session-level**
+lock tied to the Postgres connection, and n8n's Postgres node reuses a pooled connection, where the
+lock is **re-entrant** — a second execution "acquires" it in ~3 ms while the first still holds it.
+On top of that, `Release Advisory Lock` **never runs**: it hangs off `Call Persist Session And Logs`,
+which emits no items, so n8n stops there and the lock leaks on that connection.
+
+Proven on ventas (execs 37010/37013, 2026-09-17): two webhook messages 439 ms apart both read an
+empty session, both answered, and the second overwrote the first — the anti-loop counter stayed at
+`0` after two unrecognized inputs. **Assume every router has this bug.** It is invisible with human
+typing (seconds apart) and routine with auto-responders, which fire two messages at once.
+
+Burst grouping (below) covers it in practice, because every message waits ≥4 s before consuming
+while processing takes ~1 s. A proper fix — replacing the session lock with a transactional claim,
+the way `consume_inbound_buffer` uses `pg_advisory_xact_lock` **inside a function** — is still open.
+
+### 2. Burst grouping is the default, and outbound groups inside flows too
+
+Ship `runtime.inbound_buffer` + the 9-node chain on every tenant (`PORTING-conversational-upgrades.md`).
+Two deltas found while porting to ventas:
+
+- **A tenant without the audio chain has no `Inbound Ready` node**, and `router-burst-topology.mjs`
+  refuses to run without it. Insert a standalone `Inbound Ready` (noOp) between the chain and
+  `Acquire Advisory Lock` instead of shipping audio just to unlock grouping.
+- **client1 groups only outside an active flow; outbound must group inside flows too.** The dominant
+  burst there is an SMB auto-responder firing two messages at *any* step, not a human splitting a
+  thought. Cost: a 4 s wait when someone types an answer instead of tapping a button.
+
+### 3. ⚠ Burst contract: `Determine Route` must read `Inbound Ready`, not `Normalize Event`
+
+`Normalize Event` holds only the **last** message of a burst. A router that keeps
+`const inbound = $('Normalize Event').first().json` will group correctly (one reply) while silently
+processing a single message: the wizard sees one line, the lead log keeps one inbound row, and **an
+opt-out sent as the first message of a burst is lost** — a compliance hole. Read `Inbound Ready`,
+falling back to `Normalize Event`. Same for anything downstream that needs the full text.
+
+Test discipline that catches it: stub `Normalize Event` with the **last message only** and put the
+grouped payload in `Inbound Ready`, exactly as production does. A harness that feeds the grouped
+text to `Normalize Event` passes while production is broken (this shipped to ventas and was caught
+by the first real smoke test).
+
+Wizards then read bursts as: `text_body` = lines joined with `\n`, `last_text_body` = last line.
+Resolve options **last line first** ("hola" + "2" → option 2), match exact opt-out / defer tokens
+**per line** (bias to suppress), and run intent regexes on the whole text.
+
+### 4. Anti-loop guard + the silent turn (`suppress_send`)
+
+A consecutive-miss counter (`guided_misses`, shared across steps, surviving `clearGuided()`): miss 1
+re-asks, miss 2 sends one goodbye re-showing the buttons and parks the session in `dormant`, where
+unrecognized input emits **`suppress_send: true`** and nothing leaves. Caps any bot-vs-bot loop at
+**2 outbound messages**. Requires two engine-side pieces, both backwards compatible:
+
+- **Sender:** a `Check Suppress Send` switch (`{{ $json.suppress_send === true ? 1 : 0 }}`) between
+  the trigger and the HTTP node; output 1 goes straight to `Build Response`, which already returns
+  `outbound_message_id: ''` / `send_success: false` and spreads `...input`, so the flag survives to
+  the persister. No extra node needed.
+- **Persister:** push the outbound `lead_log` row only `if (data.suppress_send !== true)`; the
+  inbound row is always logged, so the inbox shows no empty outgoing bubbles.
+
+With >1 step that can miss, store which step you parked from (`dormant_from`) — otherwise waking up
+cannot pick the right prompt. Exclude `handoff`/`closed` from the guard **on purpose**: silencing
+there strands an already-qualified lead who writes back.
+
+### 5. Never dead-end a lead: price intent + free-text handoff
+
+A real lead wrote *"Enviame valores y lo evaluo"* at an option step; the wizard answered
+*"No te entendí"* and re-sent the brochure. The lead went unanswered for five days and no alert
+fired, because handoff only triggered on a button tap. Two rules for every wizard:
+
+- **Price intent** (`/\b(precio|valor|cuanto|costo|cuesta|sale|presupuesto|tarifa|abono)\b/`) answers
+  with the real numbers **at any step** except `handoff`/`closed`, and fires handoff + alert.
+- **Free text that looks like a question** (has `?` or ≥3 words) at a warm step hands off with the
+  lead's own words quoted in the summary, instead of repeating the menu.
+
+Both gated by an **auto-responder blocklist** (`horario de atención`, `dejanos tu consulta`,
+`a la brevedad`, `gracias por comunicarte`, `bienvenido`) so machines don't generate false handoffs
+and alerts; they keep falling through to the anti-loop guard.
+
+### 6. Opt-out: exact tokens + regex fallback
+
+Exact-token matching misses real refusals. After the token check add
+`/\bno\b.{0,20}\binter[eé]s\w*/` and `/\bno\b[,.\s]{0,3}gracias\b/`, extract the branch into a
+`buildOptOut()` helper, and keep bare "no" a valid wizard answer. Verified in production on ventas:
+*"por el momento no estamos interesados … gracias!"* was suppressed by the regex three days after
+deploy — the exact tokens would have missed it.
+
+## Two-way inbox (human takeover)
+
+The dashboard's `/inbox` lets an admin take a conversation, reply by hand, and release it; while
+taken, the bot stays silent. Live on ventas (2026-08-13) and client1 (2026-09-18). Portable version:
+the engine repo (`v2-inbox-webhook.json`, `scripts/lib/router-inbox-topology.mjs`,
+`patch-tenant-live.mjs <tenant> <inbox|inbox-router>`, `MIGRATION-inbox-client1.md`).
+
+- **Data:** `automation.conversation_control` (`mode` `bot|human`, `taken_by`, `expires_at`),
+  `automation.lead_log.sent_by` (`'human'` for agent messages) and `v_conversation_control`
+  (`is_human_controlled`). Written only by n8n; `dashboard_app` has SELECT on the view.
+- **Webhook** `POST /webhook/inbox` (`X-Inbox-Token`), actions `send` / `takeover` / `release`:
+  - `send` returns 401 for a bad token, 400 for a bad request, **403 if opted out** (checked first,
+    fail-closed, conditional on `outreach.suppression` existing), 409 outside the 24 h window and
+    502 if Meta rejects the message. It goes out through the tenant's sender and is logged with
+    `sent_by='human'`.
+  - A **takeover expires after 24 h by default** (`expires_in_hours` 1–720) so a forgotten takeover
+    can't silence the bot forever. ventas still uses `expires_at = NULL`.
+- **Router:**
+  - `Read Session Memory` LEFT JOINs `conversation_control` (the row exists even without a session).
+  - `Determine Route` checks the takeover on the **raw** row (not the TTL-gated profile) and returns
+    `route_target: 'human_paused'` with `human_log_rows`.
+  - `Route Switch` gets a new output (**raise `numberOutputs` in the same PUT**, or the output
+    doesn't exist and n8n drops the item) → `Log Human Inbound` (one `lead_log` row per message,
+    `ON CONFLICT DO NOTHING`) → `Release Advisory Lock`.
+  - No wizard, sender or persister runs.
+- **Order in `Determine Route`:** opt-out first (compliance wins even mid-takeover), then
+  `human_paused`, then everything else — restart words, the post-handoff window, option matching.
+  A tenant without opt-out (client1 today) puts `human_paused` first and leaves the slot marked.
+- **Deploy order:** DB block **before** the router, because the join fails every message without
+  the table. Then the webhook, the router, and the dashboard flag + env pair last.
+- **Dashboard gate:** vertical `features.inboxTab` **and** both env vars (`inboxEnabled()`). Never
+  set them to an empty string — zod rejects it and the whole dashboard fails to boot.
 
 ## Wizard pattern (the part you'll copy per vertical)
 
@@ -290,7 +463,7 @@ This is why the dashboard's `escalations` queries filter on `escalation_type` to
 3. Build upsert SQL keyed on composite PK `(listing_id, source_sheet)`.
 4. Execute against Postgres `automation.inventory`.
 
-**Tech debt:** the inventory wizard still reads Sheets at runtime instead of `automation.inventory`. The sync table is populated but unused by the runtime path. Ideal refactor swaps wizard reads to Postgres for resilience + speed.
+**Tech debt:** ~~the inventory wizard still reads Sheets at runtime instead of `automation.inventory`. The sync table is populated but unused by the runtime path.~~ **Resolved on client1 2026-09-11:** the wizard's `Read Inventory` is a Postgres node on `automation.inventory` (with `use_type` for vivienda/comercial). Tenants cloned from older exports may still read Sheets — check that node's type before assuming.
 
 ## Required environment variables
 
@@ -316,7 +489,11 @@ The n8n instance needs these. Names are stable across agencies; **values are per
 - `<UPPER>_WHATSAPP_NUMBER` — per-team internal notification numbers, one per `handoff_target`. **Generic convention since the 2026-05-22 persister patch**: the persister derives the env var name from `handoff_target` itself by uppercasing and replacing non-alphanumeric with underscore, then appending `_WHATSAPP_NUMBER`. So adding a new vertical with handoff targets like `architect` / `technical` / `municipal` just needs those env vars set — no code change required. Examples currently in use:
   - Real estate: `VALUATIONS_WHATSAPP_NUMBER`, `QUESTIONS_WHATSAPP_NUMBER`, `OWNERS_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `RENTS_WHATSAPP_NUMBER`
   - Architecture (Plec): `ARCHITECT_WHATSAPP_NUMBER`, `SALES_WHATSAPP_NUMBER`, `TECHNICAL_WHATSAPP_NUMBER`, `MUNICIPAL_WHATSAPP_NUMBER`, `DEVELOPMENT_WHATSAPP_NUMBER`, `PURCHASING_WHATSAPP_NUMBER`, `HR_WHATSAPP_NUMBER`
-- `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4o-mini`), `AI_CONFIDENCE_THRESHOLD` (default `0.6`) — wired but **not used** in v2 wizards (planned for "Otras Consultas" AI triage)
+- `OPENAI_API_KEY` — **used since 2026-09 for voice-note transcription** (client1; the OpenAI org needs prepaid credits, otherwise `429 credit_balance_exhausted`). Without the key, audio keeps the text-only reply. `OPENAI_MODEL` (default `gpt-4o-mini`) and `AI_CONFIDENCE_THRESHOLD` (default `0.6`) are still wired but **not used** in v2 wizards (planned for "Otras Consultas" AI triage)
+- **2026-09 conversational upgrades** — all optional, defaults live in code (`$env.X || default`), so no compose change unless overriding:
+  - `OPENAI_TRANSCRIBE_MODEL` (`gpt-4o-mini-transcribe`), `AUDIO_TRANSCRIPTION_ENABLED` (on; `false` is the kill switch), `AUDIO_MAX_BYTES` (2 MB), `AUDIO_TRANSCRIBE_PROMPT` (built-in real-estate vocabulary — tune per vertical)
+  - `HANDOFF_FOLLOWUP_WINDOW_MS` (24 h), `HANDOFF_FOLLOWUP_MAX_NOTIFICATIONS` (5)
+  - `INBOUND_DEBOUNCE_MS` (4000; `0` disables grouping), `INBOUND_MAX_HOLD_MS` (15000)
 
 **Sheet ID:** in current real-estate code, hardcoded as `REAL_ESTATE_SHEET_ID=1u4YkqBlPSN6UrUW_ra4hYWuRzEj8fxNp3xqWjjV1-LY` in n8n's variables. Per-tenant: each tenant has their own Sheet ID + their own Google OAuth credential.
 

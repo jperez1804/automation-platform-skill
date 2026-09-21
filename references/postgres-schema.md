@@ -10,6 +10,7 @@ Source of truth: `C:\Desarollo\jperez\n8n\whatsapp-automation-claude\postgres-se
 |---|---|---|---|
 | `automation.*` | n8n workflows | router/wizards/persister | dashboard (SELECT only via `dashboard_app` role) |
 | `dashboard.*` | dashboard app | dashboard | dashboard |
+| `runtime.*` | n8n engine (internal state) | router only — `inbound_buffer` via `consume_inbound_buffer()` | nobody else; `PUBLIC` revoked, so the dashboard role cannot read raw message text. See §`runtime` schema below. Applied on client1 2026-09-15 only. |
 
 The dashboard's DB user `dashboard_app` has `SELECT`-only on `automation.*`. Any `INSERT`/`UPDATE`/`DELETE` attempt against `automation.*` from the dashboard is a bug and will be rejected by the DB role. This is the load-bearing isolation that makes the dashboard safe to deploy without coupling it to n8n's write path.
 
@@ -189,6 +190,34 @@ The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/
 
 Adding a new vertical does not require new views unless the metric semantics change. New verticals get their differentiation from the **dashboard's `verticalConfig`** (intents, terminal flows, colors, features), not from the schema.
 
+## `runtime` schema (engine-internal, 2026-09)
+
+Source: `whatsapp-automation-claude/runtime-inbound-buffer.sql` (idempotent). **Not** part of the shared `automation` DDL: it holds transient engine state, lives in its own schema so invariant #1 stays intact, and `PUBLIC` has no access (the dashboard role cannot read raw message text). Applied on client1 2026-09-15; other tenants get it with the burst-grouping upgrade.
+
+### `runtime.inbound_buffer`
+
+| Column | Type | Notes |
+|---|---|---|
+| `seq` | BIGSERIAL | arrival order |
+| `message_id` | TEXT PK | Meta `wamid`; `INSERT … ON CONFLICT DO NOTHING` makes Meta retries harmless |
+| `contact_wa_id` | TEXT | |
+| `text_body`, `message_type`, `media_id` | TEXT | |
+| `meta_ts` | BIGINT | Meta timestamp (seconds) |
+| `consumed_by` | TEXT | `message_id` of the execution that answered the group, or `expired` |
+| `consumed_at`, `created_at` | TIMESTAMPTZ | |
+
+Indexes: partial `(contact_wa_id, seq) WHERE consumed_at IS NULL`, and `(created_at)`.
+
+### `runtime.consume_inbound_buffer(contact, message_id, force, max_hold_ms, fresh_seconds)`
+
+One atomic call per buffered execution, after its wait:
+1. `pg_advisory_xact_lock(7301, hashtext(contact))` — one consumer per contact; the two-int key space never collides with the router's single-bigint session lock.
+2. Expire pending rows older than `fresh_seconds` (120): waits lost to an n8n restart are never absorbed later.
+3. Return nothing if this message was already absorbed, or if a newer one is still waiting — unless `force`, or the group is older than `max_hold_ms`.
+4. Otherwise mark every pending row consumed and return them; delete rows older than 2 days.
+
+Verified on client1: a rolled-back transaction covering fresh, newest, already-absorbed, max-hold, force, stale and duplicate cases, then 5 concurrent race rounds in which each burst was absorbed exactly once.
+
 ## Tech debt to know about
 
-The `v2-inventory-wizard` workflow currently reads **Google Sheets directly at runtime** (not the `automation.inventory` table). The sync workflow exists and populates the table, but the wizard hasn't been switched over. When migrating, check whether the wizard JS still queries Sheets — if so, update it to query `automation.inventory` for performance + resilience.
+~~The `v2-inventory-wizard` workflow currently reads **Google Sheets directly at runtime** (not the `automation.inventory` table).~~ **Resolved on client1 2026-09-11:** `Read Inventory` is a Postgres node on `automation.inventory` (including `use_type`). Tenants cloned from older exports may still read Sheets — check the wizard's `Read Inventory` node type before assuming either way.
