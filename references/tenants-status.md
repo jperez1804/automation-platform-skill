@@ -23,7 +23,7 @@
 | `tasty` | outbound-sales (growshops) | **Live** — campaign 3 `growshops-amba-2026-07` ACTIVE since 2026-07-12 (419 recipients, cap 15/day) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-07-12 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
 | `arka` | outbound-sales (clínicas · **España**) — **provider mode + Chatwoot mirror since 2026-09-16** (bot OFF, `ARKA_CONVERSATION_MODE=chatwoot`) | **Live** — campaign 5 `clinicas-barcelona-2026-09` **paused by client** (277 seeded, 45 touched, cap 15/day, 10–12 Madrid); test campaign 6 `test-chatwoot-2num` running; 12/12 workflows ACTIVE | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
 | `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
-| `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — PENDIENTE** (workspace scaffoldeado; `discovery.md` (comercial) + `flujo-checklist.md` (bot opción por opción) sin responder, `propuesta.md` borrador v0 con placeholders, `meta-checklist.md`; **sin datos del cliente aún; nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-09 | See §Miguelez Propiedades below |
+| `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — EN CURSO** (primeras notas del cliente volcadas 2026-09-17: CRM **Lider PROP**, 2 líneas WA app (ventas / administración), ~10 consultas/día ventas; **menú fase 1 = 5 opciones** sin Emprendimientos ni wizard Propietarios; `propuesta.md` v1; **bloqueante: acceso a Lider PROP** (feed/API) + decisión sobre la línea de ventas; **nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-17 | See §Miguelez Propiedades below |
 
 ## Client1 engine upgrades — 2026-09-15 / 16
 
@@ -828,15 +828,49 @@ diarias por WhatsApp compite con la atención en mostrador.
   existe hoy**), (d) preguntas nuevas en el wizard (ambientes, cochera, mascotas, presupuesto
   libre) = desarrollo, no configuración.
 
+### Confirmed at session 2026-09-17 (primeras notas del cliente → evaluación + docs)
+
+Notas de Jonatan (charla con el cliente, fecha exacta sin registrar) volcadas en
+`discovery.md`, `flujo-checklist.md`, `propuesta.md` (v1) e `infra-status.md`.
+
+- **CRM Lider PROP** (liderprop.com) es la fuente única del inventario: altas de ventas y
+  alquileres ahí; se replica a Zonaprop y MercadoLibre en 15–30 min; **al reservar se da de
+  baja en el CRM**; 2–3 altas/semana.
+- **Dos líneas de WhatsApp Business (app, sin API)**: Ventas (ventas + alquileres; 2 asesores,
+  línea en celular + PC de cada uno) y Administración de alquileres (contratos/inquilinos;
+  2 asesores).
+- Volumen ventas ~10/día, pico ~50 por una casa buena en alquiler. Administración: "muy alto,
+  10/10". Zonaprop/ML → llegan al **CRM** (el asesor escribe desde el botón de WA del CRM);
+  Instagram → WA de ventas. Tasaciones: parte por teléfono fijo. **Emprendimientos: no manejan.**
+- ✅ **Menú fase 1 (5 opciones)**: 1 Ventas · 2 Alquileres · 3 Tasaciones · 4 Administración
+  de alquileres (**respuesta fija con `wa.me` de la línea de administración**, sin wizard) ·
+  5 Otras consultas (sin Comprar/Alquilar). Fuera: `v2-emprendimientos` y
+  `v2-admin-propietarios` (propietarios que quieren listar entran por Tasaciones 3.6).
+- ✅ Derivación: email + aviso WhatsApp (template, ya existe desde Plec) a los 2 asesores de
+  ventas. (Corrige la nota del 2026-09-09: el aviso por WhatsApp al asesor **sí existe**.)
+- ✅ Inventario: **objetivo = feed/API de Lider PROP → workflow de sync nuevo →
+  `automation.inventory`** (reemplaza el nodo Sheets de `v2-sync-inventory`). Planilla manual
+  descartada (las bajas por reserva llegarían tarde). Scraping de portales solo como último
+  recurso. **Jonatan pide acceso a Lider PROP.**
+- ⚠️ **Decisión abierta — la línea de ventas** (`flujo-checklist.md` §10): migrarla a la API
+  deja sin app a los 2 asesores en ese número; número nuevo deja al bot sin tráfico; coexistencia
+  app + API de Meta a verificar. Recomendación inicial: migrar + aviso WA a los asesores.
+- **Fase 2 (upsell, no en el alcance):** bot propio en la línea de administración — el dolor
+  más grande. Add-on posible si Lider PROP tiene webhooks: aviso WA por cada lead nuevo del CRM
+  (hoy "entran al CRM todos los días").
+
 ### Pending (next sessions)
 
-1. **Jonatan** — reunión/llamada de discovery con Miguelez usando `discovery.md` (comercial) +
-   `flujo-checklist.md` (bot opción por opción) (follow-up sugerido: **2026-09-16**).
-2. Con discovery cerrado: volcar el resultado de `flujo-checklist.md` (menú final, copy, preguntas
-   nuevas) en `propuesta.md`, completar placeholders, confirmar pricing → render HTML + PDF →
-   **Jonatan envía**. Si pidieron preguntas fuera del engine actual, cotizar aparte.
-3. Al firmar: DNS `miguelez` → `n8n-deployer` (tenant `miguelez`, vertical `real-estate`,
-   sync de inventario según sistema del cliente) → `dashboard-deployer` → `meta-checklist.md`.
+1. **Jonatan** — acceso a Lider PROP: confirmar feed/API, token, campos (zona, tipo,
+   habitaciones/ambientes, precio, moneda, link, estado reservada).
+2. **Jonatan + cliente** — cerrar §10 (línea de ventas). Verificar coexistencia app + API en
+   docs de Meta antes de ofrecerla.
+3. Completar placeholders de `propuesta.md` (dolor textual, ciudad/zonas, número admin, nombre
+   del asistente), confirmar pricing (¿sync Lider PROP dentro del setup o aparte?) → render
+   HTML + PDF → **Jonatan envía**.
+4. Al firmar: DNS `miguelez` → `n8n-deployer` (tenant `miguelez`, vertical `real-estate`,
+   **sync Lider PROP** en lugar de Sheets, redirección Administración) → `dashboard-deployer` →
+   `meta-checklist.md`.
 
 ## How to add a new tenant to this file
 

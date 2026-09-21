@@ -216,51 +216,30 @@ a bulk blast. The module only writes a CSV — never `automation.*` (invariant #
 
 ## Provider mode + Chatwoot mirror (first built for arka, 2026-09-16)
 
-Some clients want **our Meta infrastructure but their own inbox**. The pattern (reusable for any
-tenant; Chatwoot is the first consumer, any API-channel helpdesk works the same):
+Some clients want **our Meta infrastructure but their own inbox**: we send the templates and own
+opt-out/suppression, our bot stays silent, and every message is mirrored into the client's helpdesk
+where their agents answer. **Full playbook: `references/chatwoot-mirror.md`** (architecture, env,
+the three workflows, attachments in both directions, Chatwoot API specifics, install checklist).
 
-- **Router flag `<TENANT>_CONVERSATION_MODE=chatwoot|bot`**: in `chatwoot` mode every inbound
-  except opt-out becomes `direct({ rt:'', suppressSend:true, route:'chatwoot_mirror' })` — the
-  `suppress_send` plumbing (sender bypass + persister inbound-only row) makes the bot silent while
-  `lead_log`/reconciler/dashboard keep working; first inbound without a fresh session row sets
-  `handoff:true, handoff_target:'ventas'` so the existing T1 WA+email alert fires once. Opt-out
-  stays ours (compliance) and is mirrored too.
-- **Mirror sub-workflow** (`v2-chatwoot-bridge`): search/create contact by phone → reuse the
-  inbox conversation with `status !== 'resolved'` → create message `incoming`/`outgoing`, always
-  with `content_attributes: { mirror:'botargento', kind, wa_message_id }`. Called fire-and-forget
-  (`waitForSubWorkflow:false`, `continueOnFail`) as a **second output** of Determine Route (router,
-  placed BELOW the main chain so the advisory lock releases first) and of Send Template (runner;
-  `mirror_text` rendered from a local `TEMPLATE_BODIES` map — Meta never returns the rendered body).
-- **Return path** (`v2-chatwoot-webhook`): Chatwoot API-channel inbox `webhook_url` =
-  `https://<tenant>/webhook/chatwoot?token=<secret>` (Chatwoot can't sign or set headers — query
-  token, fail closed). Filter `message_created` · `outgoing` · `!private` · `inbox.id` match ·
-  **no mirror marker** (else our own outbound mirrors echo back as sends) → `POST /webhook/inbox
-  {action:'send'}` (reuses 24h-window 409, Meta 502, `sent_by='human'` logging) → on failure post a
-  **private note** into the conversation so the agent knows it didn't go out.
-- 📘 n8n 2.x refuses to PUT a workflow referencing an unpublished sub-workflow — activate the
-  bridge before patching router/runner. 📘 Setting the inbox webhook: `PATCH
-  /api/v1/accounts/{a}/inboxes/{i} {channel:{webhook_url}}`.
-- **Media (2026-09-17):** inbound — Normalize Event keeps `media_id/mime/voice/caption/filename`,
-  bridge does Graph `/{media_id}` → size gate (40 MB) → binary download → validate (reject HTML/0 B)
-  → Chatwoot multipart `attachments[]` (Chatwoot parses `content_attributes` from the form field);
-  any failure → one fallback text line. Outbound — Chatwoot `data_url` downloads anonymously
-  (signed redirect, ~5 min) → validate against Meta limits (image jpeg/png 5 MB; audio
-  aac/amr/mpeg/mp4/ogg 16 MB; video mp4/3gpp 16 MB; document 100 MB; other image/audio → document)
-  → upload to `/{phone_number_id}/media` → inbox `send` with `media:{type,id,…}` → `wa_message`.
-  Loop one item at a time to keep order. Chatwoot 4.17's voice recorder produces **mp3** (arrives
-  as audio, not a PTT bubble). Chatwoot attachment payload has no content_type/filename.
-- ⚠️ **Compliance: the inbox `send` action must check `outreach.suppression`** (403, fail-closed).
-  Arka shipped without it and an agent reply reached an opted-out contact (2026-09-16). Any tenant
-  with the two-way inbox (ventas!) has the same gap until patched — the dashboard uses that endpoint.
-  **Fixed pattern (2026-09-18, engine repo `v2-inbox-webhook.json`, live on client1):** `Check Window`
-  also returns `suppressed`, reading `outreach.suppression` only if `to_regclass` finds it and
-  through `query_to_xml(format(…))` so the name resolves at run time — one webhook for inbound and
-  outbound tenants. `Gate Window` returns 403 before the 24h 409, fail-closed (anything but an
-  explicit `false`). **ventas still runs the old webhook** without it; port that one change there.
-  ventas also logs a burst sent during a takeover as one joined `lead_log` row; client1's
-  `Log Human Inbound` writes one row per message (`human_log_rows` + `jsonb_array_elements`).
-- Known limits: reopening after 24h needs a template (not exposed in Chatwoot yet); the T1 alert
-  header is per-tenant hardcoded in the persister; the first-reply alert fires on any inbound number.
+In one paragraph: a router flag (`<TENANT>_CONVERSATION_MODE=chatwoot|bot`) turns every non-opt-out
+inbound into a silent `suppress_send` turn that still logs, still reconciles the funnel and still
+fires the T1 first-reply alert; a fire-and-forget bridge sub-workflow mirrors inbound events and sent
+templates into the client's inbox with an anti-echo marker (`content_attributes.mirror`); a webhook
+back from the helpdesk forwards agent replies — and attachments, uploaded to Meta `/media` first —
+through our own `/webhook/inbox`, posting a private note when a send is refused.
+
+- ⚠️ **Compliance, not Chatwoot-specific: the inbox `send` action must check
+  `outreach.suppression`** (403, fail-closed). arka shipped without it and an agent reply reached an
+  opted-out contact (2026-09-16). The dashboard uses the same endpoint, so **any tenant with the
+  two-way inbox** has the gap until patched. **Fixed pattern (2026-09-18, engine repo
+  `v2-inbox-webhook.json`, live on client1):** `Check Window` also returns `suppressed`, reading
+  `outreach.suppression` only if `to_regclass` finds it and through `query_to_xml(format(…))` so the
+  name resolves at run time — one webhook for inbound and outbound tenants. `Gate Window` returns
+  403 before the 24h 409, fail-closed (anything but an explicit `false`). **ventas still runs the
+  old webhook** without it; port that one change there. ventas also logs a burst sent during a
+  takeover as one joined `lead_log` row; client1's `Log Human Inbound` writes one row per message
+  (`human_log_rows` + `jsonb_array_elements`).
+
 
 ## Compliance — the rules that keep the WABA alive
 
