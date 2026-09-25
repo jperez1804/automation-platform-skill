@@ -314,6 +314,26 @@ First non-AR market. Working reference: `ArkaSystems/` scripts (`parse_listings_
   (LOPDGDD art. 19); keep per-row `source`; `opt_in_basis` blank until deliberately set (same
   compliance gate as AR).
 
+### Field learnings — Inmobiliarias CABA + GBA Norte/Oeste (BotArgento c4, 2026-09-22)
+Run `BotArgento/run_CABANorteOeste-Inmobiliarias_2026-09-22/` (scripts `*_inmo_cno.py`).
+Funnel: Cylex 125 pages + Maps 40 queries → 1,816 unique → full pool submitted →
+job `dap9vdup2jvqj4e0eih0`: **556 yes (31%)**.
+- **Delegation pattern that worked:** the scrape ran in a fresh Sonnet subagent with a
+  self-contained brief (paths, slugs, exclusion maps, hard rules: never call checknumber,
+  never glob tool-results, no commits); the coordinator re-verified batch files, exclusion
+  overlap and zone leakage before bringing the spend to the user. A fork would inherit the
+  coordinator's model — use a fresh agent with `model` set when you want a cheaper model.
+- **Cylex caps a category at 500 results** (CABA `buenos-aires` inmobiliaria/propiedades
+  = 25 pages each). GBA 404 slugs have working alt-slugs: San Martín → `villa-ballester`,
+  `jose-leon-suarez`, `san-andres`; Escobar → `belen-de-escobar`; Malvinas Argentinas →
+  `los-polvorines`, `grand-bourg`. José C. Paz has no working slug (dot or no dot).
+- **Hit rates (n=1,816, inmobiliarias AMBA norte/oeste/CABA):** Alta **91%** · Media
+  **77%** · fijo **13%** · Desconocida **3%**. Mobiles far better than inmo Zona Sur
+  (57/66%); fijo rate is stable at 13% across both inmo runs. By zone: CABA 27%, Norte 32%,
+  Oeste 36% (CABA is the most fijo-heavy).
+- Checking zone leakage: a naive `18xx` grep flags street numbers and the street
+  "Avellaneda" — re-check with the leading-CP-of-segment rule before calling it leakage.
+
 ### Field learnings — client-supplied list, no scraping (Arka Systems / Sevilla retail, 2026-09-16)
 First run where the module validated a list the **client compiled themselves** (`ArkaSystems/run_Esteban/2026-09-16.xlsx`, columns `nombre,categoria,direccion,poblacion,codigo_postal,provincia,telefono,whatsapp,whatsapp_origen`) rather than one sourced via Cylex/PA/Maps. New sub-vertical (Sevilla fashion/retail: tiendas de ropa, joyerías, mayoristas textiles) for Arka, distinct from the Barcelona clinics run.
 - **No scraping step needed** — go straight to dedup (by the pre-resolved `whatsapp` column, last-10-digit key) → checknumber. 173 rows → 165 unique (7 dupes were legit sister-listings/branches sharing one WhatsApp).
