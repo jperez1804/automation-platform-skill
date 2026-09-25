@@ -9,8 +9,10 @@ Source of truth: `C:\Desarollo\jperez\n8n\whatsapp-automation-claude\postgres-se
 | Schema | Owner | Written by | Read by |
 |---|---|---|---|
 | `automation.*` | n8n workflows | router/wizards/persister | dashboard (SELECT only via `dashboard_app` role) |
-| `dashboard.*` | dashboard app | dashboard | dashboard |
+| `dashboard.*` | dashboard app | dashboard — **plus exactly one column written by n8n**: `opportunities.next_action_notified_at`, the CRM reminder notice (`migrations/0011_n8n_reminder_grants.sql`, `references/crm-leads.md`) | dashboard |
 | `runtime.*` | n8n engine (internal state) | router only — `inbound_buffer` via `consume_inbound_buffer()` | nobody else; `PUBLIC` revoked, so the dashboard role cannot read raw message text. See §`runtime` schema below. Applied on client1 2026-09-15 only. |
+
+The CRM's own tables (`dashboard.contacts`, `dashboard.opportunities`, `dashboard.lead_events`, `dashboard.team_members`) live on the dashboard side and exist only on `client1` today — see `references/crm-leads.md` for the model and the per-tenant state.
 
 The dashboard's DB user `dashboard_app` has `SELECT`-only on `automation.*`. Any `INSERT`/`UPDATE`/`DELETE` attempt against `automation.*` from the dashboard is a bug and will be rejected by the DB role. This is the load-bearing isolation that makes the dashboard safe to deploy without coupling it to n8n's write path.
 

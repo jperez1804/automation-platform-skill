@@ -17,6 +17,7 @@ The platform runs on n8n. The same set of workflows is deployed to each tenant's
 | `v2-tasaciones-wizard.json` | 6-step valuation form. | **Yes** — vocabulary is real-estate |
 | `v2-otras-consultas.json` | 3-step general inquiry form. | Mostly no — generic intake pattern |
 | `v2-emprendimientos.json` | Project listing + advisor handoff. | **Yes** — vocabulary is real-estate |
+| `v2-crm-reminders.json` | Cron 15-min: a due CRM reminder → WhatsApp to the advisor who owns the opportunity (`crm_reminder` template), then marks it notified. **The only workflow that writes `dashboard.*`, and it writes one column.** Office hours only. Live on `client1` only. See `references/crm-leads.md`. | No — but each tenant needs its own approved template, the URL button prefix is per-domain |
 
 ## Architecture diagram (verbatim from `architecture-v2.md`)
 
