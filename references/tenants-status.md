@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it; **CRM-lite "Leads" 2026-09-25 — the ONLY tenant with it**, incl. the WhatsApp reminder notice to the advisor) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-25 | See `reference-instance.md` + §Client1 CRM-lite + §Client1 engine upgrades + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
-| `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
+| `bot-argento-sales` | outbound-sales | **Live — CRM-lite ON since 2026-09-25 + reminder notice since 2026-09-26** (second tenant with the CRM; reply-opens-opportunity rules). Campaign 8 (inmobiliarias, wizard v3) active since 2026-09-07; campaign 11 (389 inmobiliarias CNO, mobiles) seeded and **paused** by decision 2026-09-26; campaign 13 = Jonatan's test. Inbox webhook synced to the engine build 2026-09-26 (opt-out + 24 h takeover expiry) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-09-26 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
 | `tasty` | outbound-sales (growshops) | **Live** — campaign 3 `growshops-amba-2026-07` ACTIVE since 2026-07-12 (419 recipients, cap 15/day) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-07-12 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
 | `arka` | outbound-sales (clínicas · **España**) — **provider mode + Chatwoot mirror since 2026-09-16** (bot OFF, `ARKA_CONVERSATION_MODE=chatwoot`) | **Live** — campaign 5 `clinicas-barcelona-2026-09` **paused by client** (277 seeded, 45 touched, cap 15/day, 10–12 Madrid); test campaign 6 `test-chatwoot-2num` running; 12/12 workflows ACTIVE | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
@@ -55,13 +55,13 @@ Port of ventas' `/inbox`, following `whatsapp-automation-claude/MIGRATION-inbox-
   - PR botargento-dashboard#12 (`real-estate` → `inboxTab: true`) merged as `b5ae829`; client1 alone redeployed.
   - Image `sha256:5bcb86ce…`; rollback is `sha256:344f55bd…`.
   - `DASHBOARD_TAG=latest`.
-- **Difference from ventas:** a takeover **expires after 24 h** by default (`expires_in_hours`), and the `send` action checks opt-out (`outreach.suppression`, only when the table exists — client1 has none yet).
+- A takeover **expires after 24 h** by default (`expires_in_hours`), and the `send` action checks opt-out (`outreach.suppression`, only when the table exists — client1 has none yet). ventas ran the older build without either until `patch-tenant-live.mjs ventas inbox` synced it on 2026-09-26; both tenants now run the same webhook.
 - **Order in `Determine Route`:** `human_paused` is first, above restart words and the post-handoff window. When the hardening port adds opt-out to client1, it goes **above** `human_paused`.
 - **Env:** token generated on the VPS; `INBOX_WEBHOOK_TOKEN` in `.env` and `N8N_INBOX_WEBHOOK_URL/TOKEN` in `dashboard.env` + both compose files; backups `*.bak.20260918183521`.
 - ⚠️ **Rotate client1's `dashboard_app` DB password** — the deploy agent's `grep` printed `DASHBOARD_APP_PASSWORD` into the session log (2026-09-18). Pending Jonatan's go-ahead.
 - **Pending:** real-WhatsApp smoke test (take over → bot silent → reply from panel → release → bot answers).
 
-## Client1 CRM-lite ("Leads") — 2026-09-25 (the only tenant with it)
+## Client1 CRM-lite ("Leads") — 2026-09-25 (first tenant with it; ventas followed on 2026-09-25/26)
 
 Ten rounds plus a re-architecture, PRs #13–#34 on `botargento-dashboard`. Model, rules and gotchas: `references/crm-leads.md`; the 17 business rules are the dashboard repo's `docs/crm-oportunidades.md`.
 
@@ -72,7 +72,7 @@ Ten rounds plus a re-architecture, PRs #13–#34 on `botargento-dashboard`. Mode
 - **Verified live:** first real notice delivered and recorded 12:00, closed from the panel 12:03, next cycle sent nothing. One notice per reminder, ever — no second nudge, decided 2026-09-25, revisit after real use.
 - **To turn it off:** unset `CRM_REMINDER_TEMPLATE_NAME` and recreate the n8n container. The workflow stays, sends nothing, writes nothing.
 
-**No other tenant has it, and none would show it even on today's image:** `crmConfig()` needs `features.crmTab` + a `crm` block, and `real-estate` is the only vertical with either (plec is `architecture`; ventas/tasty/arka are `outbound-sales`). Their next `up -d` will still apply migrations `0005`–`0011` — empty CRM tables plus the one-column n8n grant. Harmless and invisible, but say it out loud before anyone runs `update-dashboards.sh tenant=all`. Per-tenant migration state, verified 2026-09-25: client1 `0011`; plec `0000_init`; ventas/tasty/arka `0004`; artbox none.
+**Since PR #36 the gate has two keys** — the vertical's capability (`features.crmTab` + a `crm` block: `real-estate` and `outbound-sales` have it, `architecture` does not) **and** the tenant's `CRM_ENABLED=1` in `dashboard.env`. client1 and ventas have both; plec, tasty and arka show nothing even on today's image. Before #36 the rule was vertical-only: `crmConfig()` needed `features.crmTab` + a `crm` block, and `real-estate` was the only vertical with either (plec is `architecture`; ventas/tasty/arka are `outbound-sales`). Their next `up -d` will still apply migrations `0005`–`0011` — empty CRM tables plus the one-column n8n grant. Harmless and invisible, but say it out loud before anyone runs `update-dashboards.sh tenant=all`. Per-tenant migration state, verified 2026-09-25: client1 `0011`; plec `0000_init`; ventas/tasty/arka `0004`; artbox none.
 
 ## Client1 dashboard refresh — 2026-06-01
 
@@ -467,6 +467,40 @@ Verified against the live VPS (containers + Postgres), not just docs:
 - ⏸️ **Two-way inbox** (`docs/ventas/two-way-inbox-plan.md`, 2026-07-01) remains **proposed, not
   started** — no code written.
 
+### Updated 2026-09-25 / 26 (CRM-lite on ventas + reminder notice + inbox sync)
+
+Details and every gotcha: `references/crm-leads.md` §Outbound, and the ventas workspace's
+`docs/ventas/MIGRATION-crm-reminders-ventas.md` + `docs/ventas/templates/crm_reminder.md` +
+`docs/ventas/infra-status.md` (entries 2026-09-25 and 2026-09-26).
+
+- **Phase A — CRM-lite (PR botargento-dashboard#36 → `3fe13a0`, deployed 2026-09-25 night).** Vertical
+  `outbound-sales` gained `features.crmTab` + a `crm` block with **outbound rules**: a **campaign reply opens
+  the opportunity** (not the handoff — 154 replied / 22 derived / 132 never derived), stages Nuevo → Calificado →
+  Demo → Propuesta → Cerrado / Perdido, 14 days inactivity with warning at 3, rubro from
+  `outreach.recipients.vertical` (`kindFromCampaign`), `contacts.source='campaign'`. Gate per tenant:
+  `CRM_ENABLED=1` + `CRM_SINCE=2026-09-25T21:29:15-03:00` in `dashboard.env` **and** named in
+  `dashboard.compose.yml`. Migrations 0005→0012 applied (13 registered), 154 contacts, board empty by
+  `CRM_SINCE` (history sits in Conversaciones › «Sin derivar»). Backup
+  `/opt/n8n/ventas/backups/dashboard-pre-crm-20260925-234127.dump`, rollback tag `ventas-rollback-20260925-a`.
+  PR #37 (`574155a`) makes an interpolated-but-unset `CRM_ENABLED`/`CRM_SINCE` read as absent; PR #38
+  (`3522288`) counts «hoy»/«mañana» in calendar days — both merged, not yet pulled by any tenant.
+- **Phase B — reminder notice (2026-09-26 00:06 AR).** Template `crm_reminder` on the sales WABA
+  `3920862298209294`, id `933329702739707`, `es_AR`, approved as **MARKETING** (submitted UTILITY; Jonatan
+  chose not to appeal). Workflow `x60IO7UgJpgduurW` created inert with `patch-tenant-live.mjs ventas
+  crm-reminders`, then `CRM_REMINDER_TEMPLATE_NAME=crm_reminder` + `_LANG=es_AR` in `/opt/n8n/ventas/.env`
+  **and** the n8n service's `environment:` (backups `*.bak-crm-20260925`), `n8n-ventas` recreated right after
+  the runner's :00 tick; 11/11 workflows active. Jonatan is the only team member (number loaded, notices on).
+  **First real notice not yet observed** — armed on a Saturday; window is Mon–Fri 9–19.
+- **Engine repo:** ventas is registered in `scripts/tenants.json` as `routerSource: "external"` (its router is
+  the Sales Automation `_src` build): the deployer refuses router-editing targets there and allows only
+  `inbox`, `crm-reminders`, `verify`.
+- **Inbox webhook synced to the engine build** (`patch-tenant-live.mjs ventas inbox`, versionId `6cf909c8…`,
+  rollback `779be30d…`): opt-out check before `send` (403, fail-closed) and **takeover expiry at 24 h**. A
+  conversation taken from the inbox and never released now goes back to the bot the next day.
+- **Campaigns:** 11 (389 inmobiliarias CNO, mobiles) seeded, **paused by decision**; 12 (landlines) paused;
+  13 is Jonatan's own test and still active. Landing (`index.html` + `styles-v4.css`: CRM in the 140k plan,
+  «Integrar tu CRM sin costo» on the custom plan) uploaded by Jonatan 2026-09-26.
+
 ### Pending (next sessions)
 
 1. ~~**Provision VPS tenant**~~ — done 2026-06-05 (see above).
@@ -478,7 +512,9 @@ Verified against the live VPS (containers + Postgres), not just docs:
 7. **Second campaign** — runner is active but starved; needs a new CSV → `seed-recipients.mjs` →
    campaign row (next architecture batch or another vertical).
 8. **Housekeeping** — set campaign 1 `status='done'`; remove test number `+1 555-990-2333` from the WABA.
-9. **Two-way inbox** — decide whether to build (plan exists, feature-flagged `inboxTab`, Phase-B sellable).
+9. ~~**Two-way inbox**~~ — built and live on ventas since 2026-08-13; synced to the engine build 2026-09-26.
+10. **CRM smoke on ventas** — first real reminder notice (Mon 2026-09-28 or later, 9–19); then mark campaign 13 `done`.
+11. **Campaign 11** — activate when Jonatan says so (paused by decision 2026-09-26).
 
 ### References for Bot Argento Sales
 
