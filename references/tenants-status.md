@@ -16,7 +16,7 @@
 
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
-| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-18 | See `reference-instance.md` + §Client1 engine upgrades + §Client1 dashboard refresh below |
+| `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it; **CRM-lite "Leads" 2026-09-25 — the ONLY tenant with it**, incl. the WhatsApp reminder notice to the advisor) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-25 | See `reference-instance.md` + §Client1 CRM-lite + §Client1 engine upgrades + §Client1 dashboard refresh below |
 | `plec` | architecture | **Live** (Bot v2.4 en prod, handoff via Meta template HSM, dashboard operativo · pendiente: landing page) | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-05-29 | See §Plec Arquitectos below |
 | `bot-argento-sales` | outbound-sales | **Live — CAMPAIGN 2 ACTIVE since 2026-08-11** (`arquitectura-norteoestecaba-2026-08`, IMAGE-header template `outreach_intro_img` w/ 3 buttons incl. "Quizás más adelante"→`later` pool, 233 recipients, 15/day, CABA+Norte+Oeste; benchmark: campaign 1 text 13.8% reply) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-08-11 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
@@ -60,6 +60,19 @@ Port of ventas' `/inbox`, following `whatsapp-automation-claude/MIGRATION-inbox-
 - **Env:** token generated on the VPS; `INBOX_WEBHOOK_TOKEN` in `.env` and `N8N_INBOX_WEBHOOK_URL/TOKEN` in `dashboard.env` + both compose files; backups `*.bak.20260918183521`.
 - ⚠️ **Rotate client1's `dashboard_app` DB password** — the deploy agent's `grep` printed `DASHBOARD_APP_PASSWORD` into the session log (2026-09-18). Pending Jonatan's go-ahead.
 - **Pending:** real-WhatsApp smoke test (take over → bot silent → reply from panel → release → bot answers).
+
+## Client1 CRM-lite ("Leads") — 2026-09-25 (the only tenant with it)
+
+Ten rounds plus a re-architecture, PRs #13–#34 on `botargento-dashboard`. Model, rules and gotchas: `references/crm-leads.md`; the 17 business rules are the dashboard repo's `docs/crm-oportunidades.md`.
+
+- **Model:** one person (`dashboard.contacts`), N opportunities (`dashboard.opportunities`), real FKs. "Una derivación por rubro es una oportunidad" — only a bot handoff or an advisor creates one; whoever wrote and never derived lives in Conversaciones under "Sin derivar". Migration `0010` dropped `dashboard.lead_state`.
+- **Dashboard:** `e50dbf6` (PR #34), migrations through `0011`. Rollback image `client1-rollback-20260925-a` → `7cd0e83`.
+- **n8n:** `v2-crm-reminders.json` → workflow `5DHBIyV3lPK1HmwF`, active and **enabled** (`CRM_REMINDER_TEMPLATE_NAME=crm_reminder` in `/opt/n8n/client1/.env` and in the n8n service's `environment:`; backups `docker-compose.yml.bak-20260925-145811`, `.env.bak-20260925-145811`). Installed with `patch-tenant-live.mjs client1 crm-reminders`; 10 verify assertions pass.
+- **Meta:** template `crm_reminder` APPROVED, id `1783374622796458`, WABA `912244891288296` ("BotArgento2"), business `807638368889424`, `es_AR`/UTILITY. The URL button prefix is hardcoded to client1's domain → **another tenant needs its own template**.
+- **Verified live:** first real notice delivered and recorded 12:00, closed from the panel 12:03, next cycle sent nothing. One notice per reminder, ever — no second nudge, decided 2026-09-25, revisit after real use.
+- **To turn it off:** unset `CRM_REMINDER_TEMPLATE_NAME` and recreate the n8n container. The workflow stays, sends nothing, writes nothing.
+
+**No other tenant has it, and none would show it even on today's image:** `crmConfig()` needs `features.crmTab` + a `crm` block, and `real-estate` is the only vertical with either (plec is `architecture`; ventas/tasty/arka are `outbound-sales`). Their next `up -d` will still apply migrations `0005`–`0011` — empty CRM tables plus the one-column n8n grant. Harmless and invisible, but say it out loud before anyone runs `update-dashboards.sh tenant=all`. Per-tenant migration state, verified 2026-09-25: client1 `0011`; plec `0000_init`; ventas/tasty/arka `0004`; artbox none.
 
 ## Client1 dashboard refresh — 2026-06-01
 

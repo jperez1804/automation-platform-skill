@@ -246,4 +246,5 @@ The dashboard's README documents one-liner `docker exec psql` patterns for manag
 - **`docs/BLUEPRINT.md`** — full 16-section architecture spec, written for fresh Claude instances. Vision, success metrics, tech rationale, multi-tenant model.
 - **`docs/INTENT_KPIS_PLAN.md`** — design rationale for per-intent analytics (handoff rates, completion %, time-to-handoff).
 - **`docs/THEMING_DEPLOY_RUNBOOK.md`** — runbook used during the 2026-05-02 theming + Reserved Operations rollout. The pattern (canary on `client1`, additive migration, smoke test, then `tenant=all`) is the template for any future cross-cutting deploy.
+- **`docs/crm-oportunidades.md`** — the CRM's 17 business rules + ER diagram, the source of truth for anything about Leads/opportunities. Platform-level summary and per-tenant state: `references/crm-leads.md`.
 - **`CLAUDE.md`** — the 10 non-negotiable rules (above).

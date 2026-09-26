@@ -50,6 +50,10 @@ Don't trust it when reasoning about races; burst grouping is what covers it toda
 Used for client1 (which has no `_src` workspace — the repo's `v2-*.json` are its source of truth) and
 to **port engine upgrades to any tenant**.
 - `node scripts/patch-tenant-live.mjs <tenant> <target>`; tenants live in `scripts/tenants.json`
+- Targets: `router`, `normalize`, `audio`, `burst`, `inbox`, `inbox-router`, `persister`, `sync`,
+  `wizard`, `crm-reminders`, `verify`. **`inbox` and `crm-reminders` are the only two that CREATE
+  a workflow** when the tenant has no id yet (then print the id to add to `tenants.json`); every
+  other target only patches an existing one.
   (`apiBase`, `apiKeyEnv`, optional `mcpServer`, `workflows: {router, persister, wizard, sync}`).
   A workflow id left out disables its targets and skips its verify group.
   `scripts/patch-client1-live.mjs <target>` is a wrapper kept for the client1 runbooks.
