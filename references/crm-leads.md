@@ -40,24 +40,41 @@ On client1 the grant is a **no-op because n8n connects as the cluster superuser*
 
 ## Which tenants have it — verified live 2026-09-25
 
-**Only `client1`.** It is the test tenant, assigned to no real client, which is why its data was migrated without ceremony.
+**`client1` and `ventas`** (since 2026-09-25). client1 is the test tenant, assigned to no real client, which is why its data was migrated without ceremony. ventas is Bot Argento’s own outbound sales tenant, and the first vertical where the rules differ (see **Outbound** below).
 
 | Tenant | Vertical | CRM visible? | Dashboard revision | Last migration | `opportunities` table | Reminder workflow |
 |---|---|---|---|---|---|---|
-| **client1** | `real-estate` | **yes** | `e50dbf6` | `0011` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
+| **client1** | `real-estate` | **yes** | `3fe13a0` | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
 | plec | `architecture` | no | `f3446c1` | `0000_init` | no | — |
-| ventas | `outbound-sales` | no | `01bf683` | `0004` | no | — |
+| **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `3fe13a0` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 0 opportunities until replies arrive) | — (phase B pending) |
 | tasty | `outbound-sales` | no | `01bf683` | `0004` | no | — |
 | arka | `outbound-sales` | no | `67f241a` | `0004` | no | — |
 | artbox | — (Postgres only, no dashboard container) | no | — | none | no | — |
 
-**What gates it is the vertical, not an env var.** `crmConfig()` (`src/lib/crm/enabled.ts`) needs `features.crmTab` **and** a `crm` block on the vertical config, and **`real-estate` is the only vertical that has either**. So the four other tenants would not show a Leads tab even on today's image: `architecture` and `outbound-sales` have no `crm` block.
+**Two keys gate it (since PR #36).** The VERTICAL declares the capability (`features.crmTab` + a `crm` block: `real-estate` and `outbound-sales` have it, `architecture` does not) and the TENANT turns it on with **`CRM_ENABLED=1`** in `dashboard.env`. Both on purpose: three tenants run `outbound-sales` (ventas, tasty, arka) and only ventas bought the CRM. `CRM_SINCE` (ISO) keeps replies/handoffs before that instant from opening opportunities on their own.
+
+**The env-var trap that nearly broke the deploy:** every `dashboard.compose.yml` lists its variables explicitly in `environment:` as `${VAR}`; `--env-file` only feeds that interpolation and **does not inject a variable the compose does not name**. Adding `CRM_ENABLED=1` to the `.env` alone does nothing — the line `CRM_ENABLED: "${CRM_ENABLED}"` has to be in the compose too. Same trap as `SESSION_MEMORY_TTL_MS` on the n8n side. Open corollary: if the compose names it and the `.env` does not set it, the interpolation yields `""` and the zod `enum(...).optional()` rejects it at boot.
 
 **But the migrations would run.** All of them track `DASHBOARD_TAG=latest`, so the next `up -d` on any tenant pulls this image and applies `0005`…`0011`: it creates the CRM tables empty, drops an empty `lead_state`, and grants n8n the one column. Harmless, invisible to the user, and intended — Jonatan does not pin versions on purpose. Worth saying out loud before someone runs `update-dashboards.sh tenant=all` and is surprised by a migration run.
 
 **To bring it to a real tenant you need two things**, neither of which is a deploy: a vertical with a `crm` block and `crmTab: true` (today that means a real-estate agency, or porting the block to another vertical), and — for the reminder notice — **its own approved `crm_reminder` template**, because the URL button's prefix is baked into client1's domain inside Meta.
 
 Verified live on client1: first real notice delivered and recorded, closed from the panel three minutes later; the next cycle sent nothing. PRs #13–#34 on the dashboard; the engine side is on `main` at `8319436`. Rollback image `client1-rollback-20260925-a` → `7cd0e83`.
+
+## Outbound: the rules that change when WE write first
+
+`docs/crm-oportunidades.md` §“Reglas por vertical” is the source of truth. Decided with Jonatan 2026-09-25 from ventas’ own numbers: 154 people replied to campaigns, 22 reached a handoff, **132 replied and never derived** — the inbound rule would have hidden 132 engaged people.
+
+| | Inbound (`real-estate`) | Outbound (`outbound-sales`) |
+|---|---|---|
+| What opens (`crm.opener`) | `handoff` — a bot handoff of a rubro | `reply` — the person’s first inbound message; the campaign already chose them. A handoff pushes to Calificado |
+| Where the rubro comes from (`crm.kinds`, `crm.kindFromCampaign`) | the handoff’s intent | the PROSPECT: `outreach.recipients.vertical` of the latest campaign that wrote to them, else the wizard’s `rubro`, else blank |
+| Stages | Nuevo → Calificado → Visita → Reserva → Cerrado / Perdido | Nuevo → Calificado → Demo → Propuesta → Cerrado / Perdido |
+| Inactivity | 30 days, warn at 7 | 14 days, warn at 3 |
+| Origin | `whatsapp` / manual | `campaign` when the number is in `outreach.recipients` |
+| Name | typed > `lead_name` > profile | typed > **`recipients.business_name`** > `lead_name` > profile |
+
+`crmKinds()` (`src/lib/crm/intent.ts`) replaces `verticalConfig().intents` everywhere in the CRM — without it outbound fell into a synthetic “Otras” rubro, neither filterable nor editable. There is **no e2e for outbound** (the suite runs `VERTICAL=real-estate`); the reply-mode sync is pinned by six live-DB unit tests that create a minimal `outreach` schema in the dev/CI database.
 
 ## Gotchas that cost time
 
