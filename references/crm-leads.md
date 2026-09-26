@@ -47,7 +47,7 @@ On client1 the grant is a **no-op because n8n connects as the cluster superuser*
 | Tenant | Vertical | CRM visible? | Dashboard revision | Last migration | `opportunities` table | Reminder workflow |
 |---|---|---|---|---|---|---|
 | **client1** | `real-estate` | **yes** | `fdffbdd` | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
-| plec | `architecture` | no | `f3446c1` | `0000_init` | no | — |
+| plec | `architecture` | **not yet** — capability shipped (PR #40: strict rubros Proyecto/Construcción/Gestiones/Desarrollos, Reunión → Presupuesto, 45/10 days); `CRM_ENABLED` named in the compose but unset (off) | `0a60444` (2026-09-26) | `0012` | yes, empty (128 contacts from the 0010 backfill) | — (phase 4, template created by Jonatan in Meta) |
 | **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `fdffbdd` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 1 opportunity, opened by hand) | `x60IO7UgJpgduurW`, active + enabled 2026-09-26 (template `933329702739707`; first real notice not yet observed — armed on a Saturday) |
 | tasty | `outbound-sales` | no | `01bf683` | `0004` | no | — |
 | arka | `outbound-sales` | no | `67f241a` | `0004` | no | — |
