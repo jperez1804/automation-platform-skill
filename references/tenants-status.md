@@ -483,7 +483,11 @@ Details and every gotcha: `references/crm-leads.md` §Outbound, and the ventas w
   `CRM_SINCE` (history sits in Conversaciones › «Sin derivar»). Backup
   `/opt/n8n/ventas/backups/dashboard-pre-crm-20260925-234127.dump`, rollback tag `ventas-rollback-20260925-a`.
   PR #37 (`574155a`) makes an interpolated-but-unset `CRM_ENABLED`/`CRM_SINCE` read as absent; PR #38
-  (`3522288`) counts «hoy»/«mañana» in calendar days — both merged, not yet pulled by any tenant.
+  (`3522288`) counts «hoy»/«mañana» in calendar days; PR #39 (`fdffbdd`) makes the Conversaciones «Sin derivar»
+  chip use the same total as the Leads pill (it counted a list capped at 50: ventas showed 50 vs 154) and pages
+  that list 25 at a time. **All three deployed to client1 and ventas 2026-09-26** (revision `fdffbdd`, no
+  migrations, rollback tags `client1-rollback-20260926` / `ventas-rollback-20260926` → `3fe13a0`). The VPS
+  `latest` tag now points at `fdffbdd`: plec/tasty/arka still run their old images but would move on any `up -d`.
 - **Phase B — reminder notice (2026-09-26 00:06 AR).** Template `crm_reminder` on the sales WABA
   `3920862298209294`, id `933329702739707`, `es_AR`, approved as **MARKETING** (submitted UTILITY; Jonatan
   chose not to appeal). Workflow `x60IO7UgJpgduurW` created inert with `patch-tenant-live.mjs ventas
