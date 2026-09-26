@@ -193,7 +193,7 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 
 **Wizard contract requirements added** (check before porting): option steps store `guided_options: [{key, label, value}]`, free-text steps store `guided_options: []`, and a handoff leaves `guided_step: 'handoff'`.
 
-**Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
+**Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars; `routerSource: "external"` for a tenant whose router is another repo's — ventas — which limits the deployer there to `inbox`, `crm-reminders` and `verify`). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
 
 ## Conversation hardening (defaults for EVERY new automation, 2026-09-17)
 
@@ -305,7 +305,8 @@ the engine repo (`v2-inbox-webhook.json`, `scripts/lib/router-inbox-topology.mjs
     502 if Meta rejects the message. It goes out through the tenant's sender and is logged with
     `sent_by='human'`.
   - A **takeover expires after 24 h by default** (`expires_in_hours` 1–720) so a forgotten takeover
-    can't silence the bot forever. ventas still uses `expires_at = NULL`.
+    can't silence the bot forever. ventas ran the older `expires_at = NULL` build until 2026-09-26,
+    when `patch-tenant-live.mjs ventas inbox` synced it; both tenants now run the same webhook.
 - **Router:**
   - `Read Session Memory` LEFT JOINs `conversation_control` (the row exists even without a session).
   - `Determine Route` checks the takeover on the **raw** row (not the TTL-gated profile) and returns

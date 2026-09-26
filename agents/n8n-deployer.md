@@ -56,6 +56,12 @@ to **port engine upgrades to any tenant**.
   other target only patches an existing one.
   (`apiBase`, `apiKeyEnv`, optional `mcpServer`, `workflows: {router, persister, wizard, sync}`).
   A workflow id left out disables its targets and skips its verify group.
+- **`routerSource: "external"`** (ventas): the tenant's router is the Sales Automation `_src` build, not
+  this repo's. The deployer then refuses `router`/`normalize`/`audio`/`burst`/`inbox-router`/`persister`/
+  `sync`/`wizard` there and allows only `inbox`, `crm-reminders`, `verify`; `verify` keeps the generic
+  checks (active, Read Lead Log credential, dangling refs, Execute Workflow targets) and skips the engine
+  topology group. The ventas key is `VENTAS_N8N_API_KEY`, read from the Sales Automation workspace's
+  `.n8n-ventas.json` — never the client1 key.
   `scripts/patch-client1-live.mjs <target>` is a wrapper kept for the client1 runbooks.
 - Targets: `router` (Determine Route code only), `normalize`, `audio` and `burst` (**structural**:
   insert nodes by name + rewire, one PUT), `persister` (guarded in-place edits), `sync`, `wizard`,
