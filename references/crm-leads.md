@@ -30,7 +30,9 @@ An advisor schedules "volver a contactar el día X"; when it comes due, n8n send
 - **Office hours only: 9 to 19, Monday to Friday**, tenant timezone. Something due Friday 19:05 goes out Monday 9:00.
 - **One notice per reminder, ever.** `next_action_notified_at` is what stops a resend. Marking it done closes it; re-scheduling clears the column and re-arms the notice. **If the advisor ignores the message, nothing nudges them again** — accepted 2026-09-25, revisit after a few weeks of real use.
 - A **rejected send does not mark the column**, so it retries next cycle. `CRM_REMINDER_MAX_AGE_DAYS` (7) stops that loop over a dead number. This is deliberately **not** the campaign runner's behaviour, which marks `sent` even on failure and never retries.
-- Template **`crm_reminder`**, approved, UTILITY/`es_AR`. Full contract in `MIGRATION-crm-reminders-client1.md` (engine repo). **The fixed text header must not be sent as a component** — that is what triggers #132000. The URL button's prefix is baked into the template and points at client1's domain, so **another tenant needs its own approved template**.
+- Template **`crm_reminder`**, approved, UTILITY/`es_AR`. Full contract in `MIGRATION-crm-reminders-client1.md` (engine repo). **The fixed text header must not be sent as a component** — that is what triggers #132000. The URL button's prefix is baked into the template and points at client1's domain, so **another tenant needs its own approved template**. ventas has one (id `933329702739707`, same text, prefix `dashboard.ventas…`) — submitted as UTILITY, **Meta filed it as MARKETING**; works the same, costs a few cents more. Contract in `Sales Automation/docs/ventas/templates/crm_reminder.md`.
+- **A tenant whose router is not the engine's** (ventas: the Sales Automation `_src` router) is registered in `scripts/tenants.json` with `routerSource: "external"`. The deployer then refuses every router-editing target there and allows only `inbox`, `crm-reminders` and `verify`; `verify` skips the engine topology checks. On ventas it reports two pre-existing inbox gaps (no suppression check, no takeover expiry) as FAIL — real, and unrelated to the CRM.
+- Turning it on is **two files on the tenant's VPS dir**: the `.env` AND the n8n service's `environment:` block (`CRM_REMINDER_TEMPLATE_NAME`, `CRM_REMINDER_TEMPLATE_LANG`), then recreate only the n8n container between campaign-runner ticks (:00/:30). ventas' VPS has the standalone `docker-compose`, not the `docker compose` plugin.
 
 ### The write contract
 
@@ -38,7 +40,7 @@ An advisor schedules "volver a contactar el día X"; when it comes due, n8n send
 
 On client1 the grant is a **no-op because n8n connects as the cluster superuser**. It is there so the contract is explicit and so this works on a tenant where n8n is not superuser.
 
-## Which tenants have it — verified live 2026-09-25
+## Which tenants have it — verified live 2026-09-26
 
 **`client1` and `ventas`** (since 2026-09-25). client1 is the test tenant, assigned to no real client, which is why its data was migrated without ceremony. ventas is Bot Argento’s own outbound sales tenant, and the first vertical where the rules differ (see **Outbound** below).
 
@@ -46,7 +48,7 @@ On client1 the grant is a **no-op because n8n connects as the cluster superuser*
 |---|---|---|---|---|---|---|
 | **client1** | `real-estate` | **yes** | `3fe13a0` | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
 | plec | `architecture` | no | `f3446c1` | `0000_init` | no | — |
-| **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `3fe13a0` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 0 opportunities until replies arrive) | — (phase B pending) |
+| **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `3fe13a0` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 1 opportunity, opened by hand) | `x60IO7UgJpgduurW`, active + enabled 2026-09-26 (template `933329702739707`; first real notice not yet observed — armed on a Saturday) |
 | tasty | `outbound-sales` | no | `01bf683` | `0004` | no | — |
 | arka | `outbound-sales` | no | `67f241a` | `0004` | no | — |
 | artbox | — (Postgres only, no dashboard container) | no | — | none | no | — |
