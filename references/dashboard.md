@@ -70,7 +70,7 @@ Single file per vertical. Defines:
 - Locale-specific labels for the UI
 - **Feature flags** — see below
 
-`VERTICAL=<key>` env var picks which file to load. Adding a new vertical = one new file (~1 hour). Shipped verticals: `real-estate` (client1, since v1), `architecture` (Plec, since 2026-05-19).
+`VERTICAL=<key>` env var picks which file to load. Adding a new vertical = one new file (~1 hour). Shipped verticals: `real-estate` (client1, since v1), `architecture` (Plec, since 2026-05-19), `outbound-sales` (ventas, arka), `outbound-wholesale` (Tasty, since 2026-09-27 — spreads `outbound-sales` and only swaps the `crm` block: a new key is the way to give one tenant its own pipeline, since nothing in `src` branches on the key string). Registry: `src/config/verticals/index.ts`.
 
 ### `verticalConfig.features` — the "business type" mechanism
 
@@ -221,7 +221,7 @@ Monochrome canvas + tenant's `--client-primary` as the only accent color. Always
 | Variable | Description |
 |---|---|
 | `TENANT_DB_URL` | Postgres connection (includes `dashboard_app` user) |
-| `VERTICAL` | Vertical config key (e.g. `real-estate`) |
+| `VERTICAL` | Vertical config key: `real-estate`, `architecture`, `outbound-sales`, `outbound-wholesale` |
 | `CLIENT_NAME` | Header + email subject |
 | `CLIENT_LOGO_URL` | Logo path/URL |
 | `CLIENT_PRIMARY_COLOR` | CSS accent + chart primary |
