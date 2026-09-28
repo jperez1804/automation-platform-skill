@@ -163,6 +163,26 @@ ssh vps 'cd /opt/n8n/<tenant> && docker compose up -d'
 
 Same flag set as the plugin (it's just the binary form of v2). Affects `up`, `ps`, `logs`, `down`, etc. — every compose call.
 
+### 2b. ⚠ Traefik must speak the daemon's Docker API — the 2026-09-09 all-tenant outage
+
+The VPS rebooted ~19:45 UTC on 2026-09-09 and the Docker daemon came back **upgraded to 29.1.3,
+whose minimum API is 1.44**. Traefik **v3.0** hardcodes Docker API **1.24**, so its docker provider
+failed and Traefik silently dropped **every router**: all tenants — n8n webhooks and dashboards —
+served a bare `404` for ~6 h (19:46Z → 01:52Z). Every container showed `Up`; nothing alerted.
+Inbound WhatsApp in that window bounced (Meta retries some with backoff, not all).
+
+- **Signature:** every host 404s while containers are healthy. Confirm with
+  `curl -sk -o /dev/null -w '%{http_code}' --resolve <tenant>.botargento.com.ar:443:127.0.0.1 https://<tenant>.botargento.com.ar/`
+  (404 on all hosts = provider dead) and `docker logs traefik 2>&1 | grep -i 'too old'` →
+  `client version 1.24 is too old. Minimum supported API version is 1.44`. Traefik logs it only
+  at startup, so a long-running container hides it — restart it and read the first lines.
+- **Fix:** image `traefik:v3.0` → **`traefik:v3.6`** (negotiates the API version) in
+  `/opt/traefik/docker-compose.yml`, then `docker-compose pull && docker-compose up -d` there.
+  `DOCKER_API_VERSION=1.44` in the environment does **not** help v3.0 (ignored). `/opt/traefik`
+  is root-owned: edit as root (backup `docker-compose.yml.bak-20260910` is there).
+- **Rule:** after any VPS reboot or Docker upgrade, smoke every tenant host with the `curl` above
+  before walking away. Keep Traefik on a version that negotiates the Docker API.
+
 ### 3. n8n 2.x ignores `N8N_BASIC_AUTH_*` env vars
 
 Legacy n8n 0.x/1.x used `N8N_BASIC_AUTH_ACTIVE`/`_USER`/`_PASSWORD` to gate the editor. **n8n 2.x replaced this with user management** — those env vars are silently ignored.

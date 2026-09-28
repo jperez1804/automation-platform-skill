@@ -217,12 +217,14 @@ The per-tenant queue of what is still missing lives in `Plec Automation/docs/ple
 
 **Deployer:** `node scripts/patch-tenant-live.mjs <tenant> <target>` with `scripts/tenants.json` (API base, workflow ids, key env vars; `routerSource: "external"` for a tenant whose router is another repo's — ventas — which limits the deployer there to `inbox`, `crm-reminders` and `verify`). Structural targets `normalize` → `audio` → `burst` insert nodes by exact name, and refuse half-applied graphs, dangling `$('…')` references, changed Execute Workflow ids and concurrent saves. `verify` runs 35 read-only checks. Five local suites (364 assertions) run the real `jsCode` from the JSON with stubs. The `n8n-deployer` agent knows both this pipeline and the per-agency `_src` one.
 
-## Conversation hardening (defaults for EVERY new automation, 2026-09-17)
+## Conversation hardening (defaults for EVERY new automation, 2026-09-17, extended 2026-09-28)
 
-These five behaviours started as fixes on the outbound tenant (`ventas`) after real incidents. They
-are **not vertical-specific**: ship them with any new tenant, inbound or outbound. Working
-implementation to copy: `bot-argento-sales/Sales Automation/n8n/wizards/_src/ventas.js`,
-`_src/router-determine-route.js` and `scripts/burst/`.
+These behaviours started as fixes on the outbound tenants (`ventas`, then `tasty`) after real
+incidents. They are **not vertical-specific**: ship them with any new tenant, inbound or outbound.
+Working implementation to copy: `bot-argento-sales/Sales Automation/n8n/wizards/_src/ventas.js`,
+`_src/router-determine-route.js` and `scripts/burst/`; for §6b–§8 the most complete version is
+tasty's (`TastyLivingSoil/Tasty Automation/n8n/wizards/_src/{ventas,router-determine-route}.js`
+and `scripts/sim/`).
 
 ### 1. ⚠ The per-contact advisory lock does NOT serialize concurrent executions
 
@@ -310,6 +312,66 @@ Exact-token matching misses real refusals. After the token check add
 `buildOptOut()` helper, and keep bare "no" a valid wizard answer. Verified in production on ventas:
 *"por el momento no estamos interesados … gracias!"* was suppressed by the regex three days after
 deploy — the exact tokens would have missed it.
+
+### 6b. Declines that never say "interés": closed business, wrong number, has a supplier
+
+Real replies on tasty (2026-09): *"El vivero cerró"*, *"ya no tengo más la plantería"*, *"No es
+más el NRO del vivero"*, *"Ya tenemos proveedor"*. None matches §6, so they reached the wizard,
+which handed them off and answered *"¡Perfecto! Le paso tus datos…"*. Two of the four then had to
+tap the opt-out button to be left alone. Route all three families to `optout`, matched on an
+**accent-free** copy (people write "cerro", "numero"):
+
+- **closed** — "cerró" as a whole word after a business noun (vivero/local/negocio/growshop…) and
+  closing the clause or followed by "hace"/"definitivamente"; "ya no tengo(mos) (más) el/la
+  <negocio>"; "dejamos de trabajar/vender".
+- **wrong number** — número/nro + negation or "equivocado" ("no es más el nro", "número equivocado").
+- **has a supplier** — first-person "tenemos/tengo … proveedor", "ya trabajamos con otra marca".
+
+Suppression is **permanent**, so every pattern needs an unambiguous marker: "cerramos a las 18",
+"estamos cerrados, abrimos el lunes" (temporary — often an auto-responder) and seeded business
+names like "Vivero El Cerrito" must NOT match. Reply to closed/wrong-number with a plain apology
+("Gracias por avisar 🙏 Disculpá la molestia.") — a warm "cualquier cosa, acá estamos" reads odd to
+a stranger. Whether "ya tenemos proveedor" is permanent or a soft defer is a per-client call.
+
+### 7. Auto-responder detection: two signals, and the delivery blind spot
+
+The §5 blocklist is the start; tasty's first campaign day showed its size: **9 of the first 13
+handoff alerts were the prospects' own away-bots** (growshops/viveros run WhatsApp Business greeting
+messages). Any "free text → handoff" rule needs both signals, applied to **free text only** (a
+button tap is always human). On a hit, emit nothing at all — no reply, no alert, no state change —
+so the human who later taps a button walks the flow normally.
+
+1. **Wording** — normalize first: lowercase, strip accents **and WhatsApp markdown** (`_…_`,
+   `*…*`; one bot sent `_Gracias por comunicarte con_ _*Distribuidora 520.*_`). Grow the phrase
+   list from production: every variant seen so far includes `gracias por comunicarte`,
+   `te comunicaste con`, `bienvenidos a`, `en que (te) podemos ayudar(te)`, `horario de atencion`,
+   `horario de respuesta`, `a/en la brevedad`, `en unos instantes`, `mensaje (en) automatico`,
+   `no podemos responder`, `disponibles para atenderte`, `ni bien me conecte` (full list:
+   tasty's `BOT_PHRASES`).
+2. **Timing** — free text arriving **≤30 s after our template send** is a machine. Measured on
+   tasty: every same-second auto-reply landed at 5–26 s; the quickest human took 59 s. Needs
+   `last_send_at` from `outreach.recipients` (surface `EXTRACT(EPOCH FROM NOW() - last_send_at)`).
+   ⚠ `Number(null) === 0`: skip the check when there is no send (organic contacts), or you mute
+   them.
+
+**The blind spot:** timing counts from **send**, not **delivery**. When the prospect's phone is
+offline, the away-bot fires on delivery — observed at 315 s, 3478 s and 5062 s — so only wording
+can catch those. Delivery time lives in Meta's status webhooks, which the engine doesn't process
+yet; a status consumer would close this gap.
+
+**Cleanup rule:** if a bot ever gets through, delete its escalation row. In any wizard that mutes
+after a handoff by reading `escalations`, a false row silences that contact **forever**.
+
+### 8. Keep regression harnesses in the repo, fed with real messages
+
+Every hardening fix above was verified by an offline harness that runs the real `_src` with
+`$`/`$env`/`$execution` stubbed. Two rules after tasty lost its harnesses (they lived in a session
+scratchpad, wiped 2026-09-23):
+- **In the repo** (`scripts/sim/`), run before every `patch-wizard-live.mjs`, exit 1 on failure.
+- **Verbatim incident messages as fixtures, both directions:** every real bot/decline that caused
+  an incident must route correctly, AND every real **human** reply from the campaign must still
+  reach the human — the negative control that stops a broader phrase list or regex from quietly
+  swallowing leads. Tasty's suites: 53 wizard scenarios, 75 router routes.
 
 ## Two-way inbox (human takeover)
 
@@ -477,6 +539,17 @@ if (guidedStep === 'yes_no') {
 3. If `contact_wa_id` is recoverable from the failed execution, send a fallback WhatsApp message to the user ("estamos teniendo un problema, te respondemos a la brevedad" or similar) so the conversation doesn't die silently.
 
 This is why the dashboard's `escalations` queries filter on `escalation_type` to separate operational errors from real customer handoffs.
+
+**Two things to know when reading its alerts (tasty, 2026-09-28):**
+- **One failure alerts twice.** A sub-workflow error (e.g. the persister's `Send Handoff WA
+  Notification`) also fails the router's `Call Persist Session And Logs`, so two emails arrive
+  with two execution ids. Read the sub-workflow's execution — it holds the real error
+  (`GET /api/v1/executions/<id>?includeData=true` → `resultData.error.description`).
+  Meta `#131000 "Something went wrong"` (HTTP 500) is generic and usually transient: check the
+  sub-workflow's error rate before treating it as systemic.
+- **Anything derived from `escalations` must exclude `escalation_type='workflow_error'`** —
+  handoff counts, and above all any "already handed off → mute" flag. Today the handler writes a
+  blank `contact_wa_id`, but a row carrying a real contact would silence that lead for good.
 
 ## Sync workflow
 

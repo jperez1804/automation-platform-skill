@@ -151,6 +151,14 @@ valid wizard answer.)
    DELETE"` rolls back EVERYTHING if any statement errors — even after printing `INSERT 0 1`.
    A manual suppression "applied" this way silently vanished when a later statement failed.
    Run critical writes as separate `-c` calls (or explicit BEGIN/COMMIT) and re-SELECT to verify.
+6. **Meta creates a template's first language as `en` unless you pick otherwise.** On tasty it
+   happened twice (`outreach_intro`, then `outreach_intro_pack` — approved as `en`, unusable with
+   `template_lang='es_AR'`). Select **Español (ARG)** explicitly when creating, then check with
+   `GET /<waba_id>/message_templates?name=<name>` that the `language` is `es_AR` before pointing a
+   campaign at it (the es_AR copy ended up as `outreach_intro_pack_es` / `_v2`).
+7. **Tasty's field lessons (2026-09-11 → 09-28)** — prospects' away-bots faking handoffs,
+   delayed-delivery bots the timing check can't see, and declines phrased without "interés" — are
+   written up as platform defaults in `whatsapp-automation.md` §Conversation hardening §6b–§8.
 
 **Quick-reply template buttons (2026-06-08):** if the cold template uses quick-reply buttons (e.g.
 `Ver ejemplo` / `No me interesa`) instead of a "Respondé SÍ/PARA" text CTA, taps arrive as
