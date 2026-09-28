@@ -173,7 +173,19 @@ Table filters, pagination, analytics window (`?window=7|14|28|56`), intent attri
 
 ### CSV export
 
-Streamed via `csv-stringify` to handle multi-MB exports without OOM. Rate-limited 10/min per session.
+Streamed via `csv-stringify` to handle multi-MB exports without OOM. Rate-limited 10/min per session. Since #45 the transcript's `text` column says `[foto]` / `[documento]` where a message had no text and prefixes a voice note's transcript with `[audio]` (`transcriptText` in `src/lib/media/bubble.ts`); `lead_log.text_body` is never rewritten.
+
+### Media in the thread (photos, voice notes, PDFs a lead sent) — 2026-09-28, PRs #44 + #45
+
+Where the bytes come from is the whole design: the tenant's n8n router captures media into `automation.media_assets` (see `postgres-schema.md`; today only plec's router does), and the dashboard **reads** it in two deliberately different ways:
+
+- **The thread** (`getConversation`, `src/lib/queries/contacts.ts`) LEFT JOINs the view `automation.v_media_assets`, which has **no `content` column**, so a page render can never drag binaries across the wire. `LeadLogEntry` gained `messageType` and `media: MediaRef | null`.
+- **The bytes** are served by `GET /api/media/[id]` (`src/app/api/media/[id]/route.ts` → `src/lib/queries/media.ts`), the single place the base table is read: one row, by our BIGSERIAL id, never Meta's `media_id` or its lookaside URL. `requireRoleApi("viewer")` on top of the proxy guard (an anonymous request gets the proxy's 307 to `/login` first — the 401 JSON is defense-in-depth). Headers: `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`, and an **inline allowlist** (jpeg, png, webp, ogg, mpeg, mp4 audio, pdf) — anything else, `image/svg+xml` and `text/html` included, is forced to download as `application/octet-stream`, because the mime type comes from Meta and must never pick what executes on the dashboard's origin. Not audited per request on purpose (a thread with twenty photos would write twenty rows per view); exports stay the audited action.
+- **The bubble** (`src/components/dashboard/MediaBubble.tsx`, rendered by `ConversationTimeline` for every entry) decides through the pure `presentMedia()` in `src/lib/media/bubble.ts` with copy from `src/config/media-labels.ts` (no Spanish in JSX): `<img>` for a photo (a plain `<img>`, not `next/image` — an optimizer would cache a lead's private photo server-side), native `<audio controls preload="none">` for a voice note with the transcript underneath (native because **Safari on iOS 26 plays `audio/ogg`** — tested 2026-09-28 on the real thing; no WASM decoder needed), "Descargar PDF · 294 KB" for a document. Every empty case explains itself from `fetch_status` or, with no row, from `message_type`: *Foto — ya no disponible* (swept by the 90-day retention, or before capture existed), *Archivo muy grande*, *No se pudo recuperar*, *Video — no se guarda*.
+- **Boot**: `v_media_assets` is in `REQUIRED_VIEWS` (8 views). It exists on all six tenants, empty where the router does not capture, so the shared image boots everywhere and shows "ya no disponible" for old media rather than `42P01`.
+- **Dev/CI**: `scripts/dev-automation-setup.sql` mirrors the table + view and `lead_log.message_id`; the seed gives contact `5491155501004` a stored 1×1 PNG, a swept photo and a `too_large` document, which `tests/e2e/media.spec.ts` opens.
+
+Gotcha found on the way: on an iPhone, a magic link tapped from the **Gmail app** is consumed inside Gmail's in-app browser — the login succeeds *there* (an audit `login` row ~15 s after issue) and Safari has no session; a second tap is a used token (`Verification` error). It looks like a rate limit and is not. Open the link in Safari (long-press → copy, or Gmail › Default apps).
 
 ## Design system (Reserved Operations aesthetic)
 

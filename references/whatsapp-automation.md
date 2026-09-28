@@ -196,7 +196,7 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 | Anti-loop `dormant` guard | (ventas origin) | 2026-09-16, all six wizards | 2026-09 | — | 2026-09 |
 | Media capture (n8n) | — | **2026-09-27** (+documents 09-28) | — | — | — |
 | `media_assets` table present | 2026-09-28 (empty) | 2026-09-25 | 2026-09-28 (empty) | 2026-09-28 (empty) | 2026-09-28 (empty) |
-| Media in the dashboard | — | planned (`plan-media-v2.md` Fase C) | — | — | — |
+| Media in the dashboard (shared image, PRs #44 + #45) | UI present on next recreate; nothing captured → "ya no disponible" | **2026-09-28** | same as client1 | same as client1 | same as client1 |
 
 The per-tenant queue of what is still missing lives in `Plec Automation/docs/plec-arquitectos/plan-media-v2.md` §"Deuda técnica"; artbox has no dashboard and arka's bot is off (Chatwoot mode), so neither captures media.
 

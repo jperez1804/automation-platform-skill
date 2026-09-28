@@ -202,7 +202,7 @@ WhatsApp media kept so it can be shown or played later. DDL: `Plec Automation/n8
 
 ## Dashboard-side views (read-only consumers)
 
-The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/db/views.ts` of the dashboard repo). Current set (7 views — also the list in `REQUIRED_VIEWS`, checked by `scripts/verify-view-compat.mjs` at every container boot — missing any one of them is a fast-fail):
+The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/db/views.ts` of the dashboard repo). Current set (8 views since 2026-09-28 — also the list in `REQUIRED_VIEWS`, checked by `scripts/verify-view-compat.mjs` at every container boot — missing any one of them is a fast-fail):
 
 | View | Source table(s) | Purpose |
 |---|---|---|
@@ -213,6 +213,7 @@ The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/
 | `v_follow_up_queue` | lead_log + escalations | Follow-up priority queue |
 | `v_providers` | providers | Supplier directory (`/providers` route) |
 | `v_labor_pool` | labor_pool | Talent pool (`/labor-pool` route) |
+| `v_media_assets` | media_assets | Media a lead sent, in the conversation thread — **metadata only** (no `content`); the bytes are read from the base table by `/api/media/[id]`, one row per request (dashboard PRs #44, #45) |
 
 **Invariant:** the underlying tables and views are identical for every tenant — UI differentiation comes from `verticalConfig.features`, not from per-tenant schema variations. When extending the dashboard with a new vertical capability, the cleanest path is: add view to platform `postgres-setup.sql` → apply idempotently to existing tenant Postgres → add Drizzle types + select function to `src/db/views.ts` → add to `REQUIRED_VIEWS` → gate the UI route with a `verticalConfig.features.<flag>` check.
 
