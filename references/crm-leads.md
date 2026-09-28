@@ -1,6 +1,6 @@
 # CRM-lite ("Leads") — one person, N opportunities
 
-The sales pipeline inside the dashboard: a board, a list, a per-opportunity card, reminders, and a WhatsApp notice to the advisor when a reminder comes due. Built 2026-09 on `client1`, the test tenant, over ten rounds and one re-architecture. **Not yet on any other tenant.**
+The sales pipeline inside the dashboard: a board, a list, a per-opportunity card, reminders, and a WhatsApp notice to the advisor when a reminder comes due. Built 2026-09 on `client1`, the test tenant, over ten rounds and one re-architecture, then taken to **`ventas`** (2026-09-25), **`plec`** (2026-09-26) and **`tasty`** (2026-09-27). The panel travels; the **reminder notice does not**, because it needs a per-tenant approved template — only client1 and ventas have that half.
 
 **The source of truth for the business rules is the dashboard repo: `docs/crm-oportunidades.md`** (17 numbered rules + a Mermaid ER diagram, updated in the same PR as any rule change). This file carries the platform-level facts: what exists, what is deployed where, the n8n side, and the gotchas that cost time.
 
@@ -42,24 +42,24 @@ On client1 the grant is a **no-op because n8n connects as the cluster superuser*
 
 ## Which tenants have it — verified live 2026-09-26
 
-**`client1` and `ventas`** (since 2026-09-25). client1 is the test tenant, assigned to no real client, which is why its data was migrated without ceremony. ventas is Bot Argento’s own outbound sales tenant, and the first vertical where the rules differ (see **Outbound** below).
+**`client1`, `ventas`, `plec` and `tasty`.** client1 is the test tenant, assigned to no real client, which is why its data was migrated without ceremony. ventas is Bot Argento’s own outbound sales tenant, and the first vertical where the rules differ (see **Outbound** below). **`plec` is the first paying client on it**, and the first *inbound* vertical other than real-estate.
 
 | Tenant | Vertical | CRM visible? | Dashboard revision | Last migration | `opportunities` table | Reminder workflow |
 |---|---|---|---|---|---|---|
 | **client1** | `real-estate` | **yes** | `78d4a5e` | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
-| **plec** | `architecture` | **yes** since 2026-09-26 (`CRM_ENABLED=1`, no `CRM_SINCE`: history imported — dry run 23 opportunities / 20 people, 8 active, 15 lost by inactivity; strict rubros Proyecto/Construcción/Gestiones/Desarrollos) | `78d4a5e` | `0012` | yes | — (phase 4, template created by Jonatan in Meta) |
+| **plec** | `architecture` | **yes** since 2026-09-26 (`CRM_ENABLED=1`, no `CRM_SINCE`: history imported. Live 2026-09-27: **25 opportunities / 21 people / 130 contacts**, 24 opened by a bot handoff and 1 by hand; strict rubros Proyecto/Construcción/Gestiones/Desarrollos, 45-day inactivity) | `78d4a5e` | `0012` | yes | — (phase 4 pending: template created by Jonatan in Meta, but **no `CRM_REMINDER_*` in the n8n env and no workflow installed** — verified 2026-09-27) |
 | **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `78d4a5e` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 1 opportunity, opened by hand) | `x60IO7UgJpgduurW`, active + enabled 2026-09-26 (template `933329702739707`; first real notice not yet observed — armed on a Saturday) |
 | **tasty** | `outbound-wholesale` (since 2026-09-27; spreads outbound-sales) | **yes** since 2026-09-27 (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-27T14:18:20-03:00`: empty board, history in «Sin derivar»; reply opener, Pack de apertura / Reposición via `kindAfterWon`, Nuevo → Calificado → Cotizado → Pedido, 21/5 days) | `539ff7f` | `0012` | yes (234 contacts: 230 `campaign` / 4 `whatsapp` after a one-time source alignment) | — (phase 4, template created by Jonatan in Meta) |
 | arka | `outbound-sales` | no | `67f241a` | `0004` | no | — |
 | artbox | — (Postgres only, no dashboard container) | no | — | none | no | — |
 
-**Two keys gate it (since PR #36).** The VERTICAL declares the capability (`features.crmTab` + a `crm` block: `real-estate` and `outbound-sales` have it, `architecture` does not) and the TENANT turns it on with **`CRM_ENABLED=1`** in `dashboard.env`. Both on purpose: three tenants run `outbound-sales` (ventas, tasty, arka) and only ventas bought the CRM. `CRM_SINCE` (ISO) keeps replies/handoffs before that instant from opening opportunities on their own.
+**Two keys gate it (since PR #36).** The VERTICAL declares the capability (`features.crmTab` + a `crm` block). Four verticals have one: `real-estate`, `outbound-sales`, `architecture` (PR #40, 2026-09-26) and `outbound-wholesale` (PR #43, 2026-09-27) and the TENANT turns it on with **`CRM_ENABLED=1`** in `dashboard.env`. Both on purpose: three tenants run `outbound-sales` (ventas, tasty, arka) and only ventas bought the CRM. `CRM_SINCE` (ISO) keeps replies/handoffs before that instant from opening opportunities on their own.
 
 **The env-var trap that nearly broke the deploy:** every `dashboard.compose.yml` lists its variables explicitly in `environment:` as `${VAR}`; `--env-file` only feeds that interpolation and **does not inject a variable the compose does not name**. Adding `CRM_ENABLED=1` to the `.env` alone does nothing — the line `CRM_ENABLED: "${CRM_ENABLED}"` has to be in the compose too. Same trap as `SESSION_MEMORY_TTL_MS` on the n8n side. Open corollary: if the compose names it and the `.env` does not set it, the interpolation yields `""` and the zod `enum(...).optional()` rejects it at boot.
 
 **But the migrations would run.** All of them track `DASHBOARD_TAG=latest`, so the next `up -d` on any tenant pulls this image and applies `0005`…`0011`: it creates the CRM tables empty, drops an empty `lead_state`, and grants n8n the one column. Harmless, invisible to the user, and intended — Jonatan does not pin versions on purpose. Worth saying out loud before someone runs `update-dashboards.sh tenant=all` and is surprised by a migration run.
 
-**To bring it to a real tenant you need two things**, neither of which is a deploy: a vertical with a `crm` block and `crmTab: true` (today that means a real-estate agency, or porting the block to another vertical), and — for the reminder notice — **its own approved `crm_reminder` template**, because the URL button's prefix is baked into client1's domain inside Meta.
+**To bring it to a real tenant you need two things**, neither of which is a deploy: a vertical with a `crm` block and `crmTab: true` (four verticals have one; a fifth means writing the block), and — for the reminder notice — **its own approved `crm_reminder` template**, because the URL button's prefix is baked into client1's domain inside Meta.
 
 Verified live on client1: first real notice delivered and recorded, closed from the panel three minutes later; the next cycle sent nothing. PRs #13–#34 on the dashboard; the engine side is on `main` at `8319436`. Rollback image `client1-rollback-20260925-a` → `7cd0e83`.
 
@@ -76,10 +76,22 @@ Verified live on client1: first real notice delivered and recorded, closed from 
 | Origin | `whatsapp` / manual | `campaign` when the number is in `outreach.recipients` |
 | Name | typed > `lead_name` > profile | typed > **`recipients.business_name`** > `lead_name` > profile |
 
+Two overrides architecture adds on top of the inbound column, worth knowing before reading a stale board:
+**inactivity is 45 days with a 10-day warning**, not 30/7 — a studio decides a project over weeks, so a
+month of silence is not yet a no — and **the rubros are strict**: only the four commercial flows
+(`proyecto_lead`, `construccion_lead`, `gestiones_lead`, `desarrollo_lead`). The supplier and job-seeker
+intakes have their own tabs and must never reach the board. Stages are Nuevo → Calificado → **Reunión →
+Presupuesto** → Cerrado / Perdido, the two middle ones `manualOnly`.
+
 `crmKinds()` (`src/lib/crm/intent.ts`) replaces `verticalConfig().intents` everywhere in the CRM — without it outbound fell into a synthetic “Otras” rubro, neither filterable nor editable. There is **no e2e for outbound** (the suite runs `VERTICAL=real-estate`); the reply-mode sync is pinned by six live-DB unit tests that create a minimal `outreach` schema in the dev/CI database.
 
 ## Gotchas that cost time
 
+- **`opportunities.stage` is NULL for almost every row, and that is correct.** The column stores only a
+  MANUAL override; the stage you see on the board is derived at read time by
+  `src/lib/crm/effective-stage.ts` from activity (a handoff → `calificado`, silence past `autoLostDays`
+  → `perdido`). Querying the table directly and finding 24 of 25 NULL looks like corruption and is not.
+  To reason about stages, read through that module or the API, never `SELECT stage`.
 - **postgres.js**: `IN ${sql([...])}` guesses identifier-vs-value from the preceding text and breaks inside `FILTER(...)`. Use `= ANY(${arr}::text[])`. Drizzle swaps the json/timestamp serializers, so raw `sql` must pass `${JSON.stringify(x)}::jsonb` and ISO strings.
 - **One pool per process.** `src/db/client.ts` cached the client only on `global` and only outside production, and `sql` is a Proxy — so production built a fresh pool per query. With 3–4 queries per page nobody noticed; CRM pages do 10+ and `/leads` died with Postgres `53300`. Fixed with a module singleton (PR #31). **If you add queries per render, check this first.**
 - **A bare `/leads` means "restore my last filters"** to `lib/crm/filter-memory`, so no internal link may produce one: the Tablero tab bounced straight back to the List (PR #32). If you add state restored from an empty URL, check no link generates it.

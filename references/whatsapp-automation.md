@@ -181,6 +181,24 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 | **Voice-note transcription** | Voice notes are transcribed (`gpt-4o-mini-transcribe`, `language=es`) inside the per-contact lock and routed like text. Unusable audio (too long, silent, hallucination, any API error) → "No pude entender tu audio", step kept. | `OPENAI_API_KEY` **with prepaid credits**; voice notes are processed by OpenAI (tenant privacy notice) |
 | **Sentence → option resolution** | When a wizard shows a list, `Determine Route` matches the message against the `guided_options` labels (spelled numbers → digits, longest label wins); a lone number counts only when every other word is filler. "tres habitaciones" → 3, "quiero hablar con un asesor" → the advisor option, "Tres de Febrero" stays a zone. Typed text benefits too. | wizards store `guided_options: [{key,label,value}]` |
 | **Burst grouping** | Outside an active flow each message waits 4 s and the newest answers the group: joined text, with restart words and option numbers checked on the last message and keywords on the whole group. Options, restart words, buttons and media close a group at once; max hold 15 s. One `lead_log` inbound row per WhatsApp message. | 4 s on the first reply outside a flow; `runtime` schema (see `postgres-schema.md`) |
+| **Cooldown by family** (plec's alternative to burst grouping) | `Read Session Memory` returns the menu-class routes sent in the last `MENU_COOLDOWN_MS`; `menuFamily()` collapses variants, and a reply is silenced only if its *family* already went out. Two different media in a row get two acknowledgements; two identical menus get one. Lives in `lead_log`, so it works across the 30-min session TTL. | none; `MENU_COOLDOWN_MS` (120000) |
+| **Media capture** | After the reply is sent, a branch downloads the voice note / image / document from Graph and stores it in `automation.media_assets` (bytea; a failure still writes a row whose `fetch_status` says why). Retention sweep rides on every insert. A store failure is recorded as `fetch_status='store_failed'` and `verify` turns red on it. Reads the binary with `getBinaryDataBuffer` (works in both n8n binary modes). | ~45 media/month × ~42 KB ≈ 10 MB at a 90-day steady state; `MEDIA_CAPTURE_ENABLED` / `MEDIA_MAX_BYTES` (5 MB) / `MEDIA_RETENTION_DAYS` (90); tenant privacy notice (three copies with their own clocks: Meta ~30 d, n8n execution binaries ~11 d, the table 90 d) |
+
+**Adoption per tenant** (the record of who has what — update it when a row of a tenant's tech-debt queue is paid):
+
+| Upgrade | client1 | plec | ventas | tasty | arka |
+|---|---|---|---|---|---|
+| Post-handoff window | 2026-09-15 | — (if ported: anchor on `automation.escalations`, not `session_memory`) | — | — | — |
+| Voice-note transcription | 2026-09-15 | 2026-09-25 (own OpenAI key) | — | — | — |
+| Sentence → option | 2026-09-15 | 2026-09-25 (+ spoken numbers, positional "la segunda") | — | — | — |
+| Burst grouping | 2026-09-15 | **replaced** by cooldown by family | — | — | — |
+| Cooldown by family | — | 2026-09-27 | — | — | — |
+| Anti-loop `dormant` guard | (ventas origin) | 2026-09-16, all six wizards | 2026-09 | — | 2026-09 |
+| Media capture (n8n) | — | **2026-09-27** (+documents 09-28) | — | — | — |
+| `media_assets` table present | 2026-09-28 (empty) | 2026-09-25 | 2026-09-28 (empty) | 2026-09-28 (empty) | 2026-09-28 (empty) |
+| Media in the dashboard | — | planned (`plan-media-v2.md` Fase C) | — | — | — |
+
+The per-tenant queue of what is still missing lives in `Plec Automation/docs/plec-arquitectos/plan-media-v2.md` §"Deuda técnica"; artbox has no dashboard and arka's bot is off (Chatwoot mode), so neither captures media.
 
 **Design rules that made it work** — each one fixed a real bug:
 - Transcribe **inside** the lock. Download + transcription takes 2–6 s; before the lock, a voice note and a typed "2" are processed out of order.
@@ -190,6 +208,10 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 - Normalize spoken numbers only against options on screen, or the barrio "Once" becomes option 11.
 - The buffer's Postgres nodes send errors to `Bypass Buffer`: a DB problem degrades to one-by-one processing, never to dropped messages.
 - n8n's Postgres node emits `{success: true}` for a zero-row result, so "nothing absorbed" is detected by inspecting rows.
+- **An edge proves nothing about reachability** (plec, 2026-09-27: the media branch shipped with every topology check green and stored nothing for a day). An `executeWorkflow` node whose output is `[[]]` — the shared persister call — **ends the branch**: n8n runs nothing downstream of a node that emitted no items, so `Release Advisory Lock` had run 2 times in 100 executions. Anchor new branches on a node **measured** to run (`/executions?includeData=true`, count), and make `verify` read execution data, not just `connections`.
+- **Binaries: only `await this.helpers.getBinaryDataBuffer(i, 'data')`.** With `N8N_DEFAULT_BINARY_DATA_MODE` unset, n8n 2.x stores binaries on disk and `binary.data.data` is the literal string `"filesystem-v2"`, which passes a `typeof === 'string'` check and fails `decode()` in Postgres.
+- **A node after the reply must never throw.** The router's `errorWorkflow` writes an escalation, emails, **and sends the lead** *"Disculpa, tuvimos un problema tecnico…"*. Use `continueErrorOutput` and wire the error output to something that records the failure (plec: `Store Failed` → a `store_failed` row); an unwired error output is a silent failure. `Receive Meta Event` is `responseMode: onReceived`, so a late error never causes a Meta retry either way.
+- **Documented kill switches have to exist in the container.** `--env-file` only feeds compose interpolation; a variable the compose does not name is never injected, and plec ran for eleven days with none of its seven tunables reachable. Declare them as `${VAR:-default}` and audit with `docker exec <n8n> printenv`.
 
 **Wizard contract requirements added** (check before porting): option steps store `guided_options: [{key, label, value}]`, free-text steps store `guided_options: []`, and a handoff leaves `guided_step: 'handoff'`.
 

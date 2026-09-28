@@ -174,6 +174,32 @@ Per-tenant catalog. Synced from Google Sheets (currently) by `v2-sync-inventory.
 2. **Add a vertical-specific view** on top: `CREATE VIEW automation.v_dental_treatments AS SELECT listing_id, title, price, ... FROM automation.inventory WHERE source_sheet='treatments'`.
 3. **Add a parallel table** `automation.<vertical>_inventory` if the shape really doesn't fit, but the dashboard's existing `automation.v_*` views won't pick it up automatically — you'd need to extend the views.
 
+### `automation.media_assets` (canonical since 2026-09-28; written by plec's router only, so far)
+
+WhatsApp media kept so it can be shown or played later. DDL: `Plec Automation/n8n/compose/media-assets.sql` (idempotent — `IF NOT EXISTS`, `OR REPLACE`, role-guarded grant; applied on all six tenants 2026-09-25/28). Why bytea and not a volume or S3: ~45 media/month × ~42 KB ≈ 10 MB at a 90-day steady state, no new infrastructure, rides the DB backup, and the dashboard already has a read-only connection.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGSERIAL | PK; what the dashboard's bytes route is keyed by (`/api/media/[id]`), never Meta's id |
+| `message_id` | TEXT UNIQUE | Joins to `lead_log.message_id`; UNIQUE so a retried execution updates instead of duplicating |
+| `contact_wa_id` | TEXT | |
+| `media_kind` | TEXT | `audio` / `image` / `document` are captured; `video` / `sticker` are not (decision 2026-09-28) |
+| `media_id` | TEXT | Meta's media id, kept so a failed download is retryable (~30 days on Meta's side) |
+| `mime_type` | TEXT | From Graph's metadata (`audio/ogg` for voice notes — the iOS playback question) |
+| `byte_size` | INTEGER | Real length of `content`, not what Meta declared |
+| `content` | BYTEA | NULL when nothing was stored; over ~2 KB Postgres keeps it in TOAST |
+| `fetch_status` | TEXT | `stored` · `too_large` · `unsupported` · `meta_failed` · `download_failed` · `read_failed` · `store_failed` · `skipped` — a row is written on **every** path so the UI can say why a bubble is empty |
+| `transcription_status` | TEXT | Audio only; the only durable record of how the transcription went |
+| `created_at` | TIMESTAMPTZ | Retention key |
+
+**Indexes:** `ix_media_assets_contact (contact_wa_id, created_at DESC)`, `ix_media_assets_created_at (created_at)`, plus the PK and the UNIQUE.
+
+**Retention** is not a scheduled job: the insert statement is a data-modifying CTE whose main statement is `DELETE … WHERE created_at < now() - $retention` (same shape as `runtime.consume_inbound_buffer`), parameterised by `MEDIA_RETENTION_DAYS` (default 90). n8n's own copy of each download (`binaryData/` on disk, filesystem mode) is pruned with execution data at ~11–14 days, i.e. sooner.
+
+**View `automation.v_media_assets`** exposes everything **except `content`** (plus `has_content`), so a list query can never drag binaries across the wire. `dashboard_app` has SELECT on the view **and** on the base table including `content` — the one place the dashboard reads the base table is the bytes route, deliberately. Not in `REQUIRED_VIEWS` yet; now that every tenant has it, adding it there is the right guard for a fresh tenant (Fase C of `plan-media-v2.md`).
+
+**Writers:** the router's `Store Media` (success) and `Store Failed` (its error output → `fetch_status='store_failed'`, content NULL, never clobbering stored bytes). The dashboard never writes it (invariant 2).
+
 ## Dashboard-side views (read-only consumers)
 
 The dashboard reads only `automation.v_*` views (Drizzle-typed wrappers in `src/db/views.ts` of the dashboard repo). Current set (7 views — also the list in `REQUIRED_VIEWS`, checked by `scripts/verify-view-compat.mjs` at every container boot — missing any one of them is a fast-fail):
