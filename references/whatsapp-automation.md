@@ -192,8 +192,10 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 | Voice-note transcription | 2026-09-15 | 2026-09-25 (own OpenAI key) | — | — | — |
 | Sentence → option | 2026-09-15 | 2026-09-25 (+ spoken numbers, positional "la segunda") | — | — | — |
 | Burst grouping | 2026-09-15 | **replaced** by cooldown by family | — | — | — |
-| Cooldown by family | — | 2026-09-27 | — | — | — |
-| Anti-loop `dormant` guard | (ventas origin) | 2026-09-16, all six wizards | 2026-09 | — | 2026-09 |
+| Media acks (`media_ack` / `media_ignored`, step kept mid-flow) + prose guard | **2026-09-30** (prose → the `otras` wizard, `entry_source: 'prose'`; `MIGRATION-intake-hardening-client1.md`) | 2026-09-16 (prose → `freetext_ack`) | — | — | — |
+| Repeat-guard ladder + silence path (`suppress_send` in sender + persister) | **2026-09-30** (router `399440f2`, sender `b8fbb7e3`, persister `469bca07`) | 2026-09-16 | — | — | — |
+| Cooldown by family | **2026-09-30** (also inside the post-handoff window: `handoff_media_ack` → `handoff_media_silenced`) | 2026-09-27 | — | — | — |
+| Anti-loop `dormant` guard | **2026-09-30** (inventory wizard, its 9 re-ask branches; the other four wizards never re-ask) | 2026-09-16, all six wizards | 2026-09 (ventas origin) | — | 2026-09 |
 | Media capture (n8n) | **2026-09-30** (`patch-tenant-live.mjs client1 media`, router `960ccecf`; verified same day with a real photo, PDF and voice note, 3/3 byte-exact) | **2026-09-27** (+documents 09-28) | — (external router: port into `Sales Automation/_src`) | — (engine: same target; measure the anchor first) | — (bot off) |
 | `media_assets` table present | 2026-09-28 (empty) | 2026-09-25 | 2026-09-28 (empty) | 2026-09-28 (empty) | 2026-09-28 (empty) |
 | Media in the dashboard (shared image, PRs #44 + #45) | **2026-09-30** (dashboard recreated onto `e354265`; before that it ran `78d4a5e` and showed empty bubbles over stored rows) | **2026-09-28** | UI on next dashboard recreate; nothing captured → "ya no disponible" | same as ventas | same as ventas |
