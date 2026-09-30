@@ -194,7 +194,7 @@ Built on client1 as a POC from patterns in a partner's n8n kit (`KIT-N8N-ALUMNOS
 | Burst grouping | 2026-09-15 | **replaced** by cooldown by family | — | — | — |
 | Cooldown by family | — | 2026-09-27 | — | — | — |
 | Anti-loop `dormant` guard | (ventas origin) | 2026-09-16, all six wizards | 2026-09 | — | 2026-09 |
-| Media capture (n8n) | — | **2026-09-27** (+documents 09-28) | — | — | — |
+| Media capture (n8n) | **2026-09-30** (`patch-tenant-live.mjs client1 media`, router `960ccecf`; real-media check pending) | **2026-09-27** (+documents 09-28) | — (external router: port into `Sales Automation/_src`) | — (engine: same target; measure the anchor first) | — (bot off) |
 | `media_assets` table present | 2026-09-28 (empty) | 2026-09-25 | 2026-09-28 (empty) | 2026-09-28 (empty) | 2026-09-28 (empty) |
 | Media in the dashboard (shared image, PRs #44 + #45) | UI present on next recreate; nothing captured → "ya no disponible" | **2026-09-28** | same as client1 | same as client1 | same as client1 |
 
