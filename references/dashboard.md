@@ -167,6 +167,14 @@ White-label from day one. The env-var value is the **boot fallback**; the live p
 
 Every data-fetching surface is a Server Component awaiting Drizzle queries from `src/lib/queries/*.ts`. `"use client"` only when interactivity (charts, table sort, dialog) needs it. **No REST API for data** — pages query Postgres directly. Client Components don't fetch.
 
+### Full-width views (`data-board-bleed`)
+
+The layout caps pages at 1280px except when the page root carries `data-board-bleed` (`has-[[data-board-bleed]]:max-w-none` in `src/app/(dashboard)/layout.tsx`, pure CSS). Since PR #48 (2026-10-02) that is **/leads, Derivaciones, Conversaciones, Seguimiento and Campañas**; Panel, Settings and the conversation thread keep the reading width. To widen another page, add the attribute to its root `<div>` — nothing else.
+
+**Campañas filter** (#48): chips «Todas · N» / «Activas · N», URL state `?status=active` (survives the poller's `router.refresh()`); only the table is filtered, tiles and chart stay global.
+
+**e2e timezone** (#49): Playwright runs the browser in `America/Argentina/Buenos_Aires` (`timezoneId` + `locale` in `playwright.config.ts`) and `localDateInput` in `tests/e2e/leads.spec.ts` computes in that zone. CI is UTC; between 21:00 and midnight AR the reminder test used to read «pasado mañana».
+
 ### URL state over component state
 
 Table filters, pagination, analytics window (`?window=7|14|28|56`), intent attribution (`?touch=last|first|any`), heatmap filtering (`?heatmapIntent=`) — all live in the URL. Survives reload, shareable.

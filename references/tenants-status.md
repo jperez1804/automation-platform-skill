@@ -531,6 +531,24 @@ Details and every gotcha: `references/crm-leads.md` §Outbound, and the ventas w
   13 is Jonatan's own test and still active. Landing (`index.html` + `styles-v4.css`: CRM in the 140k plan,
   «Integrar tu CRM sin costo» on the custom plan) uploaded by Jonatan 2026-09-26.
 
+### Updated 2026-10-02 / 03 (CRM rules tuned on real data + polite no in the wizard)
+
+- **Diagnosis (02-10):** 62 open opportunities, 48 of them never past the wizard's entry step — the reply opener
+  fired on auto-responders and on «ya tengo, gracias»; and prospects who tapped «Veámoslo» stayed in Nuevo because
+  the handoff only fires on «Quiero un mes gratis».
+- **Panel, PRs #46 + #47 → `86228d3`, deployed on ventas 02-10:** `passiveReplyRoutes`, `qualifyingRoutes`,
+  `declinedRoutes` (details in `crm-leads.md` §Outbound). One-time cleanup: 49 untouched auto opportunities
+  deleted in a transaction after a `pg_dump` (`backups/dashboard-pre-cleanup-20261002-163053.dump`) → 14 open.
+- **Wizard (`_src/ventas.js`), deployed 02-10 13:30 with `patch-wizard-live.mjs ventas`:** the third button of
+  «¿hoy cómo atendés?» is now **«No llego a todas»** (value still `no`; «No las atiendo» was being tapped as a
+  plain no). **Polite-no detection** (`DECLINE` + `LATER_HINT`, typed text only, not auto-responders, not in
+  handoff/closed/dormant, also on the first reply): answers once «Perfecto, gracias por avisar 🙌 Si más adelante te
+  sirve, escribime y lo vemos.», closes the script on `guided_ventas_declined` (or `_later`). **Not an opt-out** —
+  no suppression row. Harness `scripts/harness-ventas.mjs` 30/30; `scripts/burst/harness-burst.mjs` 62/65 with
+  3 **pre-existing** failures (they still expect the rubro question removed on 25-09).
+- **Dashboard `cf13439` (#48 full-width views + campaigns filter, #49 e2e timezone) on ventas, tasty, plec and
+  client1, 03-10**; rollback tags `<tenant>-rollback-20261003`. arka untouched on `67f241a`.
+
 ### Pending (next sessions)
 
 1. ~~**Provision VPS tenant**~~ — done 2026-06-05 (see above).

@@ -146,7 +146,7 @@ On Jonatan's laptop, in the dashboard repo:
 
 The script (interactive, target ≤15 min):
 - Verifies n8n + Postgres exist for that tenant on the VPS
-- Pre-flight: checks that all `REQUIRED_VIEWS` (currently 7, including `v_providers`/`v_labor_pool` since 2026-05-20) exist in the tenant Postgres — fails fast otherwise
+- Pre-flight: checks that all `REQUIRED_VIEWS` (currently 8: `v_providers`/`v_labor_pool` since 2026-05-20, `v_media_assets` since 2026-09-28) exist in the tenant Postgres — fails fast otherwise
 - Generates strong DB password + `AUTH_SECRET`
 - Applies `dashboard.*` migrations to the tenant's Postgres
 - Prompts for: `CLIENT_NAME`, `CLIENT_PRIMARY_COLOR`, `VERTICAL` (default `real-estate`), Resend credentials, allowlist of admin emails

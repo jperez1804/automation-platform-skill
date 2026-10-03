@@ -40,16 +40,16 @@ An advisor schedules "volver a contactar el día X"; when it comes due, n8n send
 
 On client1 the grant is a **no-op because n8n connects as the cluster superuser**. It is there so the contract is explicit and so this works on a tenant where n8n is not superuser.
 
-## Which tenants have it — verified live 2026-09-26
+## Which tenants have it — verified live 2026-10-03
 
 **`client1`, `ventas`, `plec` and `tasty`.** client1 is the test tenant, assigned to no real client, which is why its data was migrated without ceremony. ventas is Bot Argento’s own outbound sales tenant, and the first vertical where the rules differ (see **Outbound** below). **`plec` is the first paying client on it**, and the first *inbound* vertical other than real-estate.
 
 | Tenant | Vertical | CRM visible? | Dashboard revision | Last migration | `opportunities` table | Reminder workflow |
 |---|---|---|---|---|---|---|
-| **client1** | `real-estate` | **yes** | `78d4a5e` | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
+| **client1** | `real-estate` | **yes** | `cf13439` (2026-10-03) | `0012` | yes | `5DHBIyV3lPK1HmwF`, active + enabled |
 | **plec** | `architecture` | **yes** since 2026-09-26 (`CRM_ENABLED=1`, no `CRM_SINCE`: history imported. Live 2026-09-27: **25 opportunities / 21 people / 130 contacts**, 24 opened by a bot handoff and 1 by hand; strict rubros Proyecto/Construcción/Gestiones/Desarrollos, 45-day inactivity) | `e354265` (media in the thread, 2026-09-28) | `0012` | yes | `cfwQy0Caf9i7RHMb`, active + enabled **2026-09-28** (template `crm_reminder`/`es_AR` id `2073734073236244` on WABA `1473386571198969`, MARKETING like ventas'; nothing was due at install, first real notice not yet observed) |
-| **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `78d4a5e` | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 1 opportunity, opened by hand) | `x60IO7UgJpgduurW`, active + enabled 2026-09-26 (template `933329702739707`; first real notice not yet observed — armed on a Saturday) |
-| **tasty** | `outbound-wholesale` (since 2026-09-27; spreads outbound-sales) | **yes** since 2026-09-27 (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-27T14:18:20-03:00`: empty board, history in «Sin derivar»; reply opener, Pack de apertura / Reposición via `kindAfterWon`, Nuevo → Calificado → Cotizado → Pedido, 21/5 days) | `539ff7f` | `0012` | yes (234 contacts: 230 `campaign` / 4 `whatsapp` after a one-time source alignment) | — (phase 4, template created by Jonatan in Meta) |
+| **ventas** | `outbound-sales` | **yes** (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-25T21:29-03:00`) | `cf13439` (2026-10-03) | `0012` | yes (154 contacts: 122 `campaign` / 32 `whatsapp`; 1 opportunity, opened by hand) | `x60IO7UgJpgduurW`, active + enabled 2026-09-26 (template `933329702739707`; first real notice not yet observed — armed on a Saturday) |
+| **tasty** | `outbound-wholesale` (since 2026-09-27; spreads outbound-sales) | **yes** since 2026-09-27 (`CRM_ENABLED=1`, `CRM_SINCE=2026-09-27T14:18:20-03:00`: empty board, history in «Sin derivar»; reply opener, Pack de apertura / Reposición via `kindAfterWon`, Nuevo → Calificado → Cotizado → Pedido, 21/5 days) | `cf13439` (2026-10-03) | `0012` | yes (234 contacts: 230 `campaign` / 4 `whatsapp` after a one-time source alignment) | — (phase 4, template created by Jonatan in Meta) |
 | arka | `outbound-sales` | no | `67f241a` | `0004` | no | — |
 | artbox | — (Postgres only, no dashboard container) | no | — | none | no | — |
 
@@ -82,6 +82,13 @@ month of silence is not yet a no — and **the rubros are strict**: only the fou
 (`proyecto_lead`, `construccion_lead`, `gestiones_lead`, `desarrollo_lead`). The supplier and job-seeker
 intakes have their own tabs and must never reach the board. Stages are Nuevo → Calificado → **Reunión →
 Presupuesto** → Cerrado / Perdido, the two middle ones `manualOnly`.
+
+**Three ventas-only refinements (2026-10-02, PRs #46 + #47), all optional `CrmConfig` fields set only in `outbound-sales.ts`:**
+- **`passiveReplyRoutes`** — in reply mode, an inbound that is **not a button tap** and lands on one of these bot routes opens nothing (`guided_ventas_hoy`, `guided_ventas_dormant`, `unsupported_content`, `guided_ventas_declined`). Auto-responders («gracias por comunicarte…») and «ya tengo, gracias» land on the entry step; a tap on a template or wizard button always opens (`BUTTON_MESSAGE_TYPES` in `opportunity-sync.ts`). They wait in «Sin derivar». Before this, 48 of 62 open ventas opportunities were auto-responders; 49 untouched ones were deleted once (backup `/opt/n8n/ventas/backups/dashboard-pre-cleanup-20261002-163053.dump`), leaving 14.
+- **`qualifyingRoutes`** — an inbound on one of these routes inside the window is a qualified signal, like a handoff (`guided_ventas_oferta` = tapping «Veámoslo»; the handoff itself only fires on «Quiero un mes gratis»). Read-time (`qualifies` CTE in `leads.ts`), so it re-stages what is already on the board.
+- **`declinedRoutes`** — when the person's **latest** inbound in the window is on one, the opportunity reads as lost with the auto reason **`declined`** («dijo que por ahora no»), reversible: a later message or an advisor moving it wins; a closed deal is never reopened. Pairs with the wizard's polite-no detection (`guided_ventas_declined`, see `tenants-status.md` §Bot Argento Sales).
+
+Gotcha when querying `dashboard.opportunities` by hand: **`priority` is stored as `''`, not NULL** — `priority IS NULL` matches nothing.
 
 `crmKinds()` (`src/lib/crm/intent.ts`) replaces `verticalConfig().intents` everywhere in the CRM — without it outbound fell into a synthetic “Otras” rubro, neither filterable nor editable. There is **no e2e for outbound** (the suite runs `VERTICAL=real-estate`); the reply-mode sync is pinned by six live-DB unit tests that create a minimal `outreach` schema in the dev/CI database.
 
