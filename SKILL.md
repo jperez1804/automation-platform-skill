@@ -34,7 +34,8 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Postgres tables, schema, queries, dedup, session storage, escalations | `references/postgres-schema.md` |
 | n8n workflows, router, wizards, mermaid diagram, message flow, error handler | `references/whatsapp-automation.md` |
 | The dashboard (Next.js, vertical config, tenant config, design tokens, auth, magic link) | `references/dashboard.md` |
-| Meta embedded signup, WABA, phone number registration, Tech Provider flow | `references/meta-tech-provider.md` |
+| Meta embedded signup, WABA, phone number registration, Tech Provider flow — **incl. the v4 migration (2026-10-07: config `1423827086618896`, `extras: { setup: {}, version: 'v4' }`) and why Coexistence doesn't work for Argentine numbers** | `references/meta-tech-provider.md` §Embedded Signup version, §Coexistence |
+| **Tech debt and dated re-checks** (e.g. Coexistence for Argentina on 2026-10-21) | `techdebt/README.md` |
 | Bot Argento branding, real-estate vertical, Spanish copy, current production state | `references/reference-instance.md` |
 | VPS, Hostinger, `ssh vps`, Traefik, per-tenant compose, deploy gotchas, MCP limitations — **incl. the 2026-09-09 all-tenant 404 outage (Traefik v3.0 vs Docker 29) and the post-reboot smoke rule** | `references/vps-deployment.md` |
 | Onboarding a new agency / new vertical — step-by-step | `references/new-vertical-playbook.md` |
@@ -46,6 +47,10 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | **The CRM-lite ("Leads")** — the sales pipeline in the dashboard: one person / N opportunities, the rubro rule, "Sin derivar", the reminder notice to the advisor on WhatsApp, **which tenants have it (`client1`, `ventas`, `plec`, `tasty` — the reminder notice on the first three; tasty's template still pending at Meta)**, and the gotchas | `references/crm-leads.md`, then the dashboard repo's `docs/crm-oportunidades.md` for the 17 business rules |
 | **Defaults every new automation must ship with** — the advisory lock that doesn't serialize, burst grouping (+ the `Inbound Ready` contract), the anti-loop `dormant` guard and silent turns, never dead-ending a lead (price intent, free-text handoff), opt-out regex, declines without "interés" (closed / wrong number / has supplier), detecting the prospects' own auto-responders (wording + timing, and the delayed-delivery blind spot), regression harnesses fed with real messages | `references/whatsapp-automation.md` §Conversation hardening |
 | **Media (voice notes, photos, PDFs)** — capture into `automation.media_assets` after the reply, retention, where the bytes physically live (Postgres TOAST vs n8n's `binaryData/` files), `store_failed` visibility, **which tenants have it (n8n capture: `plec` and `client1`; the table: all six)**, the engine deployer's `media` target and the porting runbook (`whatsapp-automation-claude/PORTING-media-capture.md`), the three n8n facts that let a "verified" branch ship dead, and the dashboard plan (bytes route → iPhone Ogg/Opus gate → bubble) | `references/whatsapp-automation.md` §Conversational upgrades (Media capture row, Adoption per tenant, design rules) · `references/postgres-schema.md` §`automation.media_assets` · `Plec Automation/docs/plec-arquitectos/plan-media-v2.md` |
+
+## Tech debt folder
+
+`techdebt/` holds one file per pending item, named `YYYY-MM-DD-<slug>.md` with the date to look at it again. **When this skill loads, list `techdebt/` and tell Jonatan about any item whose date is today or past** before starting the task. Resolved items are deleted; what stays true moves into `references/`.
 
 ## Agents
 

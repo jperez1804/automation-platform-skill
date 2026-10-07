@@ -39,6 +39,24 @@ started ──▶ signup_completed ──▶ assets_saved ──▶ webhook_read
 
 **Why two stages:** the embedded signup completion is non-retryable (30s code TTL), so it has to be fast and minimal. Webhook activation can wait — it's how you control when a tenant goes live, and it's per-WABA (not app-wide), so each tenant's n8n only sees its own customer's events.
 
+## Embedded Signup version — v4 since 2026-10-07
+
+Meta deprecates **Embedded Signup v2 on 2026-10-15**. The onboarding page (`BotArgentoLandingPageRepo/landingpage/whatsapp.html`, published **by FTP**; repo on Bitbucket, `main` = `dc2045e`) moved to **v4** on 2026-10-07:
+
+- **The version lives in the Facebook Login for Business configuration, not in code.** A configuration created with the **Products** step (WhatsApp Cloud API selected) is v4. Current one: **`1423827086618896`** (variation «Registro insertado de WhatsApp»; products Cloud API + Marketing Messages API; asset WhatsApp accounts with default Manage; permissions `whatsapp_business_management` + `whatsapp_business_messaging`). Old v2-era config: `1842361349779469` (rollback value). A third one, «BotArgento WhatsApp Signup» `1302011241803276`, exists with unknown origin — don't delete.
+- The page reads `config_id` from the backend (`META_CONFIG_ID` on **Railway**; `/api/meta/embedded-signup/config` is public and shows it) and sends `extras: { setup: {}, version: 'v4' }` — no `featureType`, no `sessionInfoVersion` (those are v2/v3). `version: 'v4'` is what Meta's own launcher sends. `solutionID`, if ever set, goes inside `setup`.
+- **v4 reports user errors as `CANCEL` with `error_message`** (not `ERROR`); the page handles both. Message events carry **no `version` field** — you can't read the version from the result; the tell is the dialog showing the Marketing Messages terms (only the new config has that product).
+- The `v25.0` in the dialog URL is the **SDK/Graph version** (`META_API_VERSION`), unrelated to the signup version. Moving to v26 is a separate, unhurried change.
+- The **portfolio is chosen in step 2 «Activos comerciales»**, after the phone number — not on the first screen.
+- **Meta's own launcher** (App Dashboard → Use cases → Conectar en WhatsApp → Administrador de registro insertado → «Lanzamiento del registro insertado») launches any config/version/feature type without our code — use it to tell "our bug" from "Meta's side".
+- Backend needed **no code change**. The full signup (backend saves the assets) on v4 was not run end-to-end before publishing — first real client confirms it; if it fails, ask for the Session ID on screen.
+
+## Coexistence (WhatsApp Business app + API on one number) — NOT available, 2026-10-07
+
+Tried with `featureType: 'whatsapp_business_app_onboarding'` (± `sessionInfoVersion: '3'`), webhook fields `history` / `smb_app_state_sync` / `smb_message_echoes` subscribed on the app (callback = this backend, which logs any field and returns 200), Tech Provider complete, WhatsApp Business app 2.26, Argentine number — the flow always shows the plain "new number + SMS/call" screen, **also from Meta's own launcher**. Meta's support AI said **Argentina isn't a supported region** (it also listed requirements: number active in the app ≥ 7 days, and **no Marketing Messages / MM Lite on the number** — our v4 config includes that product, so Coexistence will likely need a Cloud-API-only config). Not confirmed by an official source. Follow-up tracked in `techdebt/2026-10-21-whatsapp-coexistence.md`.
+
+**Until then, a client who already uses the WhatsApp Business app** either deletes the account in the app and onboards that number with SMS (answers from the dashboard inbox afterwards; app history doesn't carry over), or puts the bot on a new number. **Never verify an app number by SMS in the signup "to test"** — that moves it off the app.
+
 ## Meta Graph API endpoints used
 
 | Method | Endpoint | When | Service file |
