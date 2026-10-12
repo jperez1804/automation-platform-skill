@@ -10,7 +10,13 @@
 
 Details: `references/meta-tech-provider.md` §Coexistence.
 
+## Meta support case
+
+**Case 29343441661908513** (Direct Support, opened 2026-10-12 by Jonatan, topic «WhatsApp Tech Provider: Onboarding», type «Embedded Signup - Coexistence Onboarding»): https://business.facebook.com/direct-support/case-detail/29343441661908513/?business_id=807638368889424 — asks whether coexistence is available for Argentina, an ETA, the official country list, whether Marketing Messages in our config matters, and a beta/waitlist. Evidence attached: Meta's own launcher (config 1423827086618896, v4, session info 3, feature type «Registro de app de WhatsApp Business»), number 5491165978398 (sales number on the app), End Client BM 807638368889424 (BotArgento). If the answer is «not available», follow up with a «WABiz: Feature Request» case.
+
 ## How to check on 2026-10-21
+
+0. **First, ask Jonatan for the reply on case 29343441661908513** (only he can open Direct Support).
 
 1. Ask Jonatan whether Meta support answered (official doc link / human agent / date for Argentina).
 2. Re-read Meta's doc: `https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users` — look for a supported-countries list.
