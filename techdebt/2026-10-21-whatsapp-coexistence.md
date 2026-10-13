@@ -22,6 +22,8 @@ The official changelog (`…/whatsapp/changelog`) says otherwise: **2025-02-11**
 
 **Next test (cheap, no production impact):** Jonatan created config **`28469481039412526`** on 2026-10-13 (Cloud API only, Cuentas de WhatsApp with default Administrar, the two whatsapp_* permissions; test only, NOT in Railway). Test it with Meta's launcher (v4, session info 3, «Registro de app de WhatsApp Business») with the sales number (≥ 7 days on the app from 2026-10-14). Cancel at any SMS/call code screen. If Coexistence appears → follow «If it's available». If not, reply on the case quoting the 2025-10-23 changelog entry and ask for a human agent.
 
+**Result 2026-10-13 (number at 6 days on the app):** still NOT offered. With config `28469481039412526` + `whatsapp_business_app_onboarding` + v4 + session info 3 (dialog `facebook.com/v26.0/dialog/oauth`), the first step went straight to «Agrega tu número de teléfono de WhatsApp» with only «Crea uno nuevo» / «número virtual»; no portfolio step, no option to connect the app. Session ID `01a1353d-feb8-73cb-aa81-af93aa0665c3` (give it to Meta). Cancelled. **Retry from 2026-10-14** (7 days); if still nothing, reply on the case with the changelog entry and this session ID.
+
 ## How to check on 2026-10-21
 
 0. **First, ask Jonatan for the reply on case 29343441661908513** (only he can open Direct Support).
