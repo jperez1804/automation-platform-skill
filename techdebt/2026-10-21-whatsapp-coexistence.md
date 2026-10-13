@@ -14,6 +14,14 @@ Details: `references/meta-tech-provider.md` §Coexistence.
 
 **Case 29343441661908513** (Direct Support, opened 2026-10-12 by Jonatan, topic «WhatsApp Tech Provider: Onboarding», type «Embedded Signup - Coexistence Onboarding»): https://business.facebook.com/direct-support/case-detail/29343441661908513/?business_id=807638368889424 — asks whether coexistence is available for Argentina, an ETA, the official country list, whether Marketing Messages in our config matters, and a beta/waitlist. Evidence attached: Meta's own launcher (config 1423827086618896, v4, session info 3, feature type «Registro de app de WhatsApp Business»), number 5491165978398 (sales number on the app), End Client BM 807638368889424 (BotArgento). If the answer is «not available», follow up with a «WABiz: Feature Request» case.
 
+### Reply received 2026-10-13 — contradicts the changelog
+
+Support says: not available for Argentina, no ETA, "limited to EEA, UK, Japan, Australia, Nigeria and South Africa"; no country list published (watch the changelog); no beta/waitlist; **Marketing Messages / MM Lite on the config or number makes it ineligible**; app ≥ 2.24.17; number active ≥ 7 days.
+
+The official changelog (`…/whatsapp/changelog`) says otherwise: **2025-02-11** Coexistence launched with no country limit in the entry; **2025-10-23** it was *added* for Australia, Japan, Philippines, Russia, South Korea, Turkey, EEA/EU, UK, i.e. the regions excluded at launch. Nigeria and South Africa appear in no availability entry. The doc page lists no country limits at all, only app ≥ 2.24.17, Tech Provider, and a working webhook. Support's list looks like the **old exclusion list read backwards** (second time it happens). So Argentina is probably **not** the blocker, and the likeliest real cause is **Marketing Messages in config `1423827086618896`**.
+
+**Next test (cheap, no production impact):** Jonatan creates a Login for Business config with **Cloud API only** and runs Meta's launcher (v4, session info 3, «Registro de app de WhatsApp Business») with the sales number (≥ 7 days on the app from 2026-10-14). Cancel at any SMS/call code screen. If Coexistence appears → follow «If it's available». If not, reply on the case quoting the 2025-10-23 changelog entry and ask for a human agent.
+
 ## How to check on 2026-10-21
 
 0. **First, ask Jonatan for the reply on case 29343441661908513** (only he can open Direct Support).
