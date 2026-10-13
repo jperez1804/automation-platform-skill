@@ -23,6 +23,7 @@
 | `tasty` | **outbound-wholesale** since 2026-09-27 (growshops; was outbound-sales) | **Live — CRM-lite ON since 2026-09-27** (empty board from `CRM_SINCE=2026-09-27T14:18:20-03:00`; Pack de apertura / Reposición; see §Tasty CRM). Campaign 5 `growshops-interior-2026-09` ACTIVE (493 recipients, cap 30/day, Mon–Fri 11–16); campaigns 3 (AMBA, 419) and 4 (test) done. 915 recipients, ~28 % reply, ~35 % of repliers reach Mauro. **Bot hardening 2026-09-11/28**: prospects' auto-responders muted (wording + ≤30 s timing; delayed-delivery blind spot), declines without "interés" → opt-out, regression suites in `scripts/sim/` (see `whatsapp-automation.md` §6b–§8) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-09-28 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
 | `arka` | outbound-sales (clínicas · **España**) — **provider mode + Chatwoot mirror since 2026-09-16** (bot OFF, `ARKA_CONVERSATION_MODE=chatwoot`) | **Live** — campaign 5 `clinicas-barcelona-2026-09` **paused by client** (277 seeded, 45 touched, cap 15/day, 10–12 Madrid); test campaign 6 `test-chatwoot-2num` running; 12/12 workflows ACTIVE | `arka.botargento.com.ar` (n8n), `dashboard.arka.botargento.com.ar` — dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox APAGADO, env pre-staged sin cablear) | 2026-09-04 | See §Arka Systems below |
 | `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
+| `nuevoestilo` | **carrocería** (nuevo vertical `carroceria` · taller de chapa y pintura, Banfield) | **Discovery — RFP «Proyecto NEO» recibido 2026-10-11 (particulares + asegurados, 2 dispositivos, turnos, Instagram, coexistencia); propuesta v1 por fases 2026-10-13** (HTML + artifact; **precios en placeholder**; coexistencia planteada como no disponible en AR con caso Meta abierto; Instagram vía ManyChat → WhatsApp); bot INBOUND; pide demo con casos reales antes de contratar (Fase 0) | `nuevoestilo.botargento.com.ar` (propuesto; sin infra) | 2026-10-13 | See §Carrocería Nuevo Estilo below |
 | `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — EN CURSO** (primeras notas del cliente volcadas 2026-09-17: CRM **Lider PROP**, 2 líneas WA app (ventas / administración), ~10 consultas/día ventas; **menú fase 1 = 5 opciones** sin Emprendimientos ni wizard Propietarios; `propuesta.md` v1; **bloqueante: acceso a Lider PROP** (feed/API) + decisión sobre la línea de ventas; **nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-17 | See §Miguelez Propiedades below |
 
 ## Client1 engine upgrades — 2026-09-15 / 16
@@ -976,3 +977,46 @@ When a new agency starts onboarding, add:
 1. A row in **Tenant index** (initial stage = `Discovery`).
 2. A new `## <Tenant Name>` section with the same structure: confirmed facts, pending list, vertical-specific notes, references.
 3. Update the per-tenant section as the tenant progresses through the pipeline. Never overwrite — strike old facts and add new dated entries.
+
+## Carrocería Nuevo Estilo
+
+**Stage:** Discovery — taller de chapa y pintura en **Banfield** (Lomas de Zamora). **Nuevo vertical
+`carroceria`** (no existe en dashboard ni n8n). Bot **inbound**. Llegó por WhatsApp el 2026-10-11
+recomendado por ChatGPT, con un RFP escrito con ChatGPT («Proyecto NEO») + anexos de **dos dispositivos /
+derivación humana** y **turnos y recordatorios**. Pide propuesta **por etapas**, costos detallados y una
+**demo con casos reales** antes de contratar.
+
+**Workspace:** `C:\Desarollo\jperez\taller-nuevo-estilo\Nuevo Estilo Automation\` (docs en
+`docs/nuevo-estilo/`).
+
+### Confirmed at session 2026-10-13 (scaffold + investigación + propuesta v1)
+
+- ✅ Workspace scaffoldeado (convención estándar; `.gitignore` patrón Plec; engine dirs = README).
+- ✅ `docs/nuevo-estilo/rfp-neo.md` — copia textual de los 3 documentos del cliente.
+- ✅ `docs/nuevo-estilo/infra-status.md` — estado, mapa de capacidades (existe / parcial / a construir),
+  coexistencia, datos faltantes, checklist Meta.
+- ✅ `docs/nuevo-estilo/research.md` — competidores (ninguno en chapa y pintura en AR; genéricos para
+  talleres mecánicos), ManyChat (precios nuevos desde 2026-03, requisitos, botón `wa.me`, apagar Card URL
+  Shortener), precios Meta AR (oficial: por mensaje desde 2025-07; utility en ventana y servicio gratis;
+  72 h gratis desde anuncios; ARS como moneda desde 2026-04; cifras de terceros marketing US$0,0618 /
+  utility 0,012–0,026), flujo aseguradora ↔ taller (asegurado / tercero / orden de reparación /
+  franquicia; lista de aseguradoras), diseño de turnos (`agenda.*` + Google Calendar espejo + templates
+  utility 24h/2h).
+- ✅ `docs/nuevo-estilo/requisitos-checklist.md` — trazabilidad de cada línea del RFP → fase → sección.
+- ✅ **Propuesta v1** `propuesta.md` + `propuesta.html` (patrón Aurelio, 12 secciones): menú de 6
+  opciones (1 Presupuesto · 2 Siniestro con seguro · 3 Turnos · 4 Estado de mi presupuesto · 5 Ubicación/
+  horarios/pagos · 6 Hablar con una persona), mockups A particular / B asegurado / C guardia digital /
+  D turnos / F Instagram→WhatsApp, tira de transferencia NEO → operador → admin, §5 coexistencia honesta
+  (probada, caso Meta abierto, opciones a/b/c), tabla reglas §6, fases 0–4, pruebas de aceptación, tabla
+  §9 del RFP, inversión. **Precios `[[COMPLETAR]]` (decisión de Jonatan)**; costos de terceros con cifras.
+  Publicada como artifact (link en la sesión). `scripts/render-pdf.ps1` para el PDF (se niega si quedan
+  placeholders).
+- ✅ `docs/nuevo-estilo/demo-script.md` — demo hoy con los 3 números vivos + toma humana en client1;
+  Fase 0 recomendada con número nuevo (pasa a producción si eligen (a)).
+- Decisiones de Jonatan (2026-10-13): entregable HTML artifact; precios placeholder; coexistencia
+  honesta con las 3 opciones; **todo el alcance entra, en fases**; **Instagram = puerta de entrada con
+  ManyChat (Reels, historias, DMs) y todo se redirige a WhatsApp**, que es el centro del flujo.
+- Pendiente Jonatan: completar precios/IVA/SLA/permanencia, correr el PDF, preguntar si Meta respondió el
+  caso 29343441661908513 antes de enviar; conseguir número nuevo para la Fase 0. Pendiente cliente:
+  aseguradoras y relación, horario, dirección, promos, nombre del operador, emails.
+- **Follow-up:** enviar propuesta → registrar fecha acá. Re-check coexistencia **2026-10-21**.
