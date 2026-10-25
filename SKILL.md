@@ -22,7 +22,7 @@ Everything else — n8n workflows, Postgres `automation` schema, Next.js dashboa
 | 1 | **Landing page** | `C:\Desarollo\jperez\BotArgentoLandingPageRepo\landingpage` | Vanilla HTML/CSS/JS lead capture template. Cloned + rebranded per agency. Lead routes to Google Calendar + WhatsApp FAB. |
 | 2 | **WhatsApp automation** | `C:\Desarollo\jperez\n8n\whatsapp-automation-claude` | n8n workflows: thin router → child wizards → shared sender + persister + error handler. Reads/writes the Postgres `automation` schema. **The engine is shared; wizard contents are vertical-specific.** |
 | 3 | **Multi-tenant dashboard** | `C:\Desarollo\jperez\n8n\botargento-dashboard` | Next.js 15 + Drizzle + Auth.js magic-link. Per-tenant Docker container behind Traefik on the VPS. Vertical config (`src/config/verticals/<vertical>.ts`) makes it multi-vertical. Read-only against `automation.v_*` views. |
-| 4 | **Meta Tech Provider backend** | `C:\Desarollo\jperez\n8n\botargento-backend` | Hono + SQLite. Two-stage Meta embedded signup: signup completion → admin-activated per-WABA webhook override pointing to tenant's n8n. Deployed on Railway. Jonatan is a registered Meta Tech Provider. |
+| 4 | **Meta Tech Provider backend** | `C:\Desarollo\jperez\n8n\botargento-backend` | Hono + SQLite. Two-stage Meta embedded signup: signup completion → admin-activated per-WABA webhook override pointing to tenant's n8n. Deployed on the Hostinger VPS (`https://api.botargento.com.ar`, since 2026-10-24; Railway before that). Jonatan is a registered Meta Tech Provider. |
 
 ## How to use this skill
 
@@ -69,6 +69,21 @@ its own references — the caller does not need to have this skill loaded.
 
 Edit the `.md` files in `agents/` (they are versioned with this repo); the junction makes the change
 visible immediately. Don't put agents anywhere else.
+
+**Project-scoped exception:** the Meta backend repo ships its own two agents in
+`botargento-backend/.claude/agents/` — `backend-ops` (health, logs, read-only SQLite, backup,
+restart of the `botargento-backend` container) and `backend-deployer` (gate → push → GHCR build →
+`docker-compose pull/up` on the VPS → smoke, rollback by sha tag). They are only loaded when working
+inside that repo. See `references/meta-tech-provider.md` → Deployment.
+
+Same pattern for the **ventas** tenant (since 2026-10-25): `bot-argento-sales/Sales Automation/.claude/agents/`
+ships `ventas-ops` (health, `docker logs`, n8n executions node by node, read-only SQL, restart of
+`n8n-ventas`, `pg_dump`) and `ventas-deployer` (that repo's publish pipeline: `patch-wizard-live.mjs`
+code swaps, `scripts/coex/` + `scripts/burst/` structural patches, `.env`/compose + recreate, rollback,
+`infra-status.md` entry). Claude Code loads them through the junction `bot-argento-sales/.claude/agents`
+(the session root is one level above the git repo). The global `n8n-deployer` keeps the engine-repo
+targets on ventas (`inbox`, `crm-reminders`, `verify`) and the porting to other tenants. Roster and
+hand-off rules: that repo's `AGENTS.md`.
 
 ## n8n MCP cross-references
 

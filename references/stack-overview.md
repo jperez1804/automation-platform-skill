@@ -25,7 +25,7 @@ The platform is **four cooperating pillars** plus one shared database. Everythin
                   │  per-WABA webhook      │    │  per-tenant Docker   │
                   │  override              │    │  behind Traefik      │
                   └────────────────────────┘    └──────────────────────┘
-                          (Railway)                  (Hostinger VPS)
+                      (Hostinger VPS)                (Hostinger VPS)
 ```
 
 ## 1. Landing page
@@ -77,7 +77,7 @@ See `references/dashboard.md` for the 10 non-negotiable rules + design tokens + 
 
 **Repo:** `C:\Desarollo\jperez\n8n\botargento-backend`
 
-- **Stack:** Hono + TypeScript + better-sqlite3 (WAL) + Drizzle + Zod + pino. Deployed on Railway with persistent `/data` volume.
+- **Stack:** Hono + TypeScript + better-sqlite3 (WAL) + Drizzle + Zod + pino. Single Docker container on the Hostinger VPS (`/opt/n8n/control-plane/`, volume `botargento_backend_data` → `/data`), public at `https://api.botargento.com.ar` via Traefik. Moved off Railway on 2026-10-24.
 - Jonatan is a **registered Meta Tech Provider**. This backend brokers the **Embedded Signup** flow that lets a client onboard their own WhatsApp Business Account (WABA) without leaving Jonatan's site.
 - **Two-stage onboarding state machine:** `started` → `signup_completed` → `assets_saved` → `webhook_ready`. Stage 1 finishes at the embedded signup callback; Stage 2 (admin-triggered) installs the **per-WABA webhook override** that points Meta callbacks at the tenant's own n8n endpoint (e.g., `https://client1.botargento.com.ar/webhooks/whatsapp`).
 - **Auth model:** public routes (sessions, complete) rate-limited by IP. Admin routes (`/api/admin/*`) gated by `X-Admin-Key` header.

@@ -8,7 +8,7 @@ What's **shared** (don't touch):
 - Postgres `automation` schema (DDL frozen)
 - n8n router / sender / persister / error handler / sync workflows
 - Dashboard Next.js codebase (one image, deployed per tenant)
-- Meta Tech Provider backend (one Railway deployment, multi-tenant)
+- Meta Tech Provider backend (one container on the VPS, multi-tenant)
 - VPS topology (Hostinger VM, Traefik, per-tenant compose)
 - CI/CD pipeline (GitHub Actions → GHCR → SSH deploy)
 

@@ -8,7 +8,7 @@ This backend is **control-plane only**. It does NOT process runtime WhatsApp mes
 
 ## Stack
 
-Hono + TypeScript (strict, ES2022) + better-sqlite3 12.8.0 (WAL mode + foreign keys) + Drizzle ORM + Zod + pino + ULID. Deployed on Railway with persistent `/data` volume.
+Hono + TypeScript (strict, ES2022) + better-sqlite3 12.8.0 (WAL mode + foreign keys) + Drizzle ORM + Zod + pino + ULID. One Docker container on the Hostinger VPS with a named volume for `/data` (see **Deployment** below). Railway until 2026-10-24.
 
 ## Two-stage onboarding state machine
 
@@ -41,10 +41,10 @@ started ──▶ signup_completed ──▶ assets_saved ──▶ webhook_read
 
 ## Embedded Signup version — v4 since 2026-10-07
 
-Meta deprecates **Embedded Signup v2 on 2026-10-15**. The onboarding page (`BotArgentoLandingPageRepo/landingpage/whatsapp.html`, published **by FTP**; repo on Bitbucket, `main` = `dc2045e`) moved to **v4** on 2026-10-07:
+Meta deprecates **Embedded Signup v2 on 2026-10-15**. The onboarding page (`BotArgentoLandingPageRepo/landingpage/v5/whatsapp.html` — the file that is live as `botargento.com.ar/whatsapp.html`; `landingpage/whatsapp.html` is the older style — published **by FTP**; repo on Bitbucket, `main` = `dc2045e`) moved to **v4** on 2026-10-07:
 
 - **The version lives in the Facebook Login for Business configuration, not in code.** A configuration created with the **Products** step (WhatsApp Cloud API selected) is v4. Current one: **`1423827086618896`** (variation «Registro insertado de WhatsApp»; products Cloud API + Marketing Messages API; asset WhatsApp accounts with default Manage; permissions `whatsapp_business_management` + `whatsapp_business_messaging`). Old v2-era config: `1842361349779469` (rollback value). A third one, «BotArgento WhatsApp Signup» `1302011241803276`, exists with unknown origin — don't delete.
-- The page reads `config_id` from the backend (`META_CONFIG_ID` on **Railway**; `/api/meta/embedded-signup/config` is public and shows it) and sends `extras: { setup: {}, version: 'v4' }` — no `featureType`, no `sessionInfoVersion` (those are v2/v3). `version: 'v4'` is what Meta's own launcher sends. `solutionID`, if ever set, goes inside `setup`.
+- The page reads `config_id` from the backend (`META_CONFIG_ID` in the VPS `backend.env`; `/api/meta/embedded-signup/config` is public and shows it) and sends `extras: { setup: {}, version: 'v4' }` — no `featureType`, no `sessionInfoVersion` (those are v2/v3). `version: 'v4'` is what Meta's own launcher sends. `solutionID`, if ever set, goes inside `setup`.
 - **v4 reports user errors as `CANCEL` with `error_message`** (not `ERROR`); the page handles both. Message events carry **no `version` field** — you can't read the version from the result; the tell is the dialog showing the Marketing Messages terms (only the new config has that product).
 - The `v25.0` in the dialog URL is the **SDK/Graph version** (`META_API_VERSION`), unrelated to the signup version. Moving to v26 is a separate, unhurried change.
 - The **portfolio is chosen in step 2 «Activos comerciales»**, after the phone number — not on the first screen.
@@ -156,12 +156,38 @@ Connection: `src/db/client.ts` enables WAL mode + foreign keys at startup.
 | `NODE_ENV` | `development` | `development` or `production` |
 | `LOG_LEVEL` | `info` | pino log level |
 
+## Deployment — Hostinger VPS since 2026-10-24
+
+Moved off Railway after Railway's 2026-10-21 secret-store incident (workspace variables matched the
+attacker's search pattern). The move doubled as a **full secret rotation**: new `ENCRYPTION_KEY`
+(database re-encrypted with `scripts/rotate-encryption-key.mjs`), new `ADMIN_API_KEY`,
+new `META_WEBHOOK_VERIFY_TOKEN`, Meta app secret reset. Railway project to be deleted after 2026-10-25.
+
+| Thing | Value |
+|---|---|
+| Public URL | `https://api.botargento.com.ar` — Cloudflare **A record** → 187.127.6.44, DNS only. **Never existed before:** Railway was called by its generated URL directly. |
+| VPS dir | `/opt/n8n/control-plane/` — `backend.compose.yml` + `backend.env` (0600, never in Git) |
+| Container / image | `botargento-backend` ← `ghcr.io/jperez1804/botargento-backend:<BACKEND_TAG>` (`latest` or `sha-<commit>`), built by `.github/workflows/release.yml` on push to `main` |
+| Data | volume `botargento_backend_data` → `/data/botargento.db`; migrations run at container start |
+| Backups | nightly 03:00, `/home/deploy/backup-backend.sh` → `/home/deploy/backups/backend/` (14 kept) |
+| Deploy | `ssh vps 'cd /opt/n8n/control-plane && docker-compose --env-file backend.env -f backend.compose.yml pull backend && docker-compose --env-file backend.env -f backend.compose.yml up -d backend'` |
+| Agents | project-scoped in the repo: `backend-ops` (read-mostly) and `backend-deployer` (ship / rollback / one env key) |
+
+**Who calls the API (update all three if the host ever changes again):**
+1. Onboarding page `API_BASE` (`landingpage/v5/whatsapp.html`, FTP-published).
+2. Meta App Dashboard → WhatsApp → Configuration: callback `https://api.botargento.com.ar/api/webhooks/meta/whatsapp` + verify token.
+3. Anyone holding the admin key (`/api/admin/*`). Per-WABA webhook overrides point at tenant n8n domains, not here.
+
+Gotcha: the auto-mode permission classifier blocks `docker-compose up` on the VPS as a production
+deploy — hand the exact command to Jonatan to run with `!`.
+
 ## Reusable pieces (per-agency clone)
 
-For a new agency the backend itself is **shared infrastructure** (one Railway deployment serves all tenants). What changes per agency is just data: a new `organizations` row, a new `onboarding_session`, a new WABA + phone, a new encrypted credential. The CORS_ORIGINS env var may need to be updated to allow the new agency's onboarding page domain.
+For a new agency the backend itself is **shared infrastructure** (one container on the VPS serves all tenants). What changes per agency is just data: a new `organizations` row, a new `onboarding_session`, a new WABA + phone, a new encrypted credential. The CORS_ORIGINS env var may need to be updated to allow the new agency's onboarding page domain.
 
 ## Where the deep architecture decisions live
 
-- **`README.md`** — Quick start, env vars, API endpoints, onboarding flow diagram, Railway deployment, Meta app setup
+- **`README.md`** — Quick start, env vars, API endpoints, onboarding flow diagram, VPS deployment, Meta app setup
+- **`deploy/vps/MIGRATION.md`** — the Railway → VPS runbook as actually executed (2026-10-23/24), incl. the key-rotation script and rollback
 - **`Feature-META_SOLUTION_ID.md`** — Detailed Meta integration docs, Embedded Signup contract (Facebook SDK, code exchange TTL), Tech Provider setup steps
 - **`CLAUDE.md`** — code rules + non-negotiable rules (above)
