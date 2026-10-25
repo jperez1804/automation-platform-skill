@@ -51,11 +51,25 @@ Meta deprecates **Embedded Signup v2 on 2026-10-15**. The onboarding page (`BotA
 - **Meta's own launcher** (App Dashboard → Use cases → Conectar en WhatsApp → Administrador de registro insertado → «Lanzamiento del registro insertado») launches any config/version/feature type without our code — use it to tell "our bug" from "Meta's side".
 - Backend needed **no code change**. The full signup (backend saves the assets) on v4 was not run end-to-end before publishing — first real client confirms it; if it fails, ask for the Session ID on screen.
 
-## Coexistence (WhatsApp Business app + API on one number) — NOT available, 2026-10-07
+## Coexistence (WhatsApp Business app + API on one number) — AVAILABLE in Argentina, verified 2026-10-13
 
-Tried with `featureType: 'whatsapp_business_app_onboarding'` (± `sessionInfoVersion: '3'`), webhook fields `history` / `smb_app_state_sync` / `smb_message_echoes` subscribed on the app (callback = this backend, which logs any field and returns 200), Tech Provider complete, WhatsApp Business app 2.26, Argentine number — the flow always shows the plain "new number + SMS/call" screen, **also from Meta's own launcher**. Meta's support AI said **Argentina isn't a supported region** (it also listed requirements: number active in the app ≥ 7 days, and **no Marketing Messages / MM Lite on the number** — our v4 config includes that product, so Coexistence will likely need a Cloud-API-only config). Not confirmed by an official source. Follow-up tracked in `techdebt/2026-10-21-whatsapp-coexistence.md`.
+A client keeps using the WhatsApp Business app on their number **and** the bot runs on the same number through the Cloud API. Verified end to end with the sales number `+5491165978398` (phone_number_id `1363953910136191`, WABA `1600788471522545`), connected to the ventas tenant on 2026-10-13. Meta support's claim that Argentina is unsupported was wrong (twice it recited the old exclusion list backwards; case `29343441661908513`). The config does not matter either: production config `1423827086618896` (with Marketing Messages) works.
 
-**Until then, a client who already uses the WhatsApp Business app** either deletes the account in the app and onboards that number with SMS (answers from the dashboard inbox afterwards; app history doesn't carry over), or puts the bot on a new number. **Never verify an app number by SMS in the signup "to test"** — that moves it off the app.
+**What triggers it:** `extras.featureType = 'whatsapp_business_app_onboarding'` on `FB.login`, with the same v4 config. Without the featureType an app number hits «Este número ya está registrado… desconéctalo» on the SMS screen — so the standard button is safe for app users, it just can't onboard them.
+
+**The client's flow (v4 is "phone number first"):** «Crea uno nuevo» → type the app number → Meta recognises it and switches to Coexistence by itself (shows the app's business profile) → **pick the existing portfolio** (the step defaults to «create», which is how the test made a stray portfolio «Jonatan» `4012727335701166`) → scan the QR from the app (also sent as a WhatsApp message) → WABA name / time zone → terms → `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` with `phone_number_id`, `waba_id`, `business_id`. **If it asks for an SMS/call code, cancel**: the number wasn't accepted and verifying it would move it off the app. Requirements per Meta: app ≥ 2.24.17, number active in the app ≥ 7 days (a number created in the app the same day went to the SMS screen on 2026-10-07).
+
+**What we ship (all live since 2026-10-14):**
+
+| Layer | Where | Behaviour |
+|---|---|---|
+| Onboarding page | `landingpage/v5/whatsapp.html` (Bitbucket `main` `015411a`) | Second button «Ya uso la app de WhatsApp Business» adds the featureType; the FINISH handler accepts both events; `/complete` gets `signup_type: 'coexistence'`. |
+| Backend | `src/routes/*` (`signup_type` enum `standard` \| `coexistence`, migration `0002_coexistence_signup`) | Coexistence skips `POST /{phone}/register` and calls `POST /{phone}/smb_app_data` (`smb_app_state_sync` + `history`) — allowed only within **24 h** of the signup. History arrives as webhooks and lands in `webhook_events`. Admin «import» (`/api/admin/*`) takes `signup_type` too. |
+| Engine (n8n, ventas only so far) | `Sales Automation/scripts/coex/` (`coex-nodes.mjs`, `patch-coex-live.mjs`, `patch-handoff-sender-live.mjs`, `harness-coex.mjs`) | `smb_message_echoes` (the owner answering from the app) → `Pause On Echo`: `conversation_control` mode `human`, `taken_by whatsapp_app`, 12 h (`COEX_ECHO_PAUSE_HOURS`), renewed per echo, never shortens a manual takeover; the echo is logged as outbound `sent_by='human'`. `Determine Route` checks the pause **before** answering non-text content (a sticker mid-pause used to get «solo texto»). The inbox replies from the number the contact wrote to; the handoff template always goes out from `META_PHONE_NUMBER_ID` (the template lives on that WABA; #132001 otherwise). `history` / `smb_app_state_sync` payloads are ignored by the router. Limits: 20 msg/s, no groups. |
+
+**Every new Coexistence client needs the engine part ported** (the landing page promises the 12 h pause): run the `scripts/coex/` patches against that tenant's router / inbox / persister via `ventas-deployer` or `n8n-deployer`, declare `COEX_ECHO_PAUSE_HOURS` if a different window is wanted, and create the handoff template on the new WABA or keep `META_PHONE_NUMBER_ID` on a WABA that has it.
+
+**Still open:** subscribe `account_update` (disconnection arrives as `PARTNER_REMOVED`); history and contacts into the dashboard; first Coexistence onboarding of a real client (only our own number so far).
 
 ## Meta Graph API endpoints used
 

@@ -6,6 +6,5 @@ One file per item: `YYYY-MM-DD-<slug>.md`, where the date is **when to look at i
 
 | Date | Item | Area |
 |---|---|---|
-| 2026-10-21 | [WhatsApp Coexistence in Argentina](2026-10-21-whatsapp-coexistence.md) | Meta onboarding |
 | — | [Burst harness: 3 stale assertions](2026-10-07-burst-harness-stale-assertions.md) | Engine (ventas) |
 | — | [First real v4 signup not yet observed](2026-10-07-embedded-signup-v4-first-signup.md) | Meta onboarding |

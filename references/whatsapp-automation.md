@@ -402,8 +402,16 @@ the engine repo (`v2-inbox-webhook.json`, `scripts/lib/router-inbox-topology.mjs
     `ON CONFLICT DO NOTHING`) → `Release Advisory Lock`.
   - No wizard, sender or persister runs.
 - **Order in `Determine Route`:** opt-out first (compliance wins even mid-takeover), then
-  `human_paused`, then everything else — restart words, the post-handoff window, option matching.
-  A tenant without opt-out (client1 today) puts `human_paused` first and leaves the slot marked.
+  `human_paused`, then **the non-text reply** («solo texto»), then everything else — restart words,
+  the post-handoff window, option matching. A sticker or voice note sent mid-pause must stay silent
+  (ventas bug 2026-10-14). A tenant without opt-out (client1 today) puts `human_paused` first and
+  leaves the slot marked.
+- **Coexistence echo = a takeover from the app (ventas since 2026-10-13):** when the owner answers
+  from the WhatsApp Business app, Meta sends `smb_message_echoes`; `Normalize Event` maps it to
+  `event_kind 'echo'`, `Route Event Kind` gets a third output → `Pause On Echo` writes the same
+  `conversation_control` row (`taken_by whatsapp_app`, 12 h, renewed per echo, never shortening a
+  manual takeover) and logs the echo as outbound `sent_by='human'`. Reference port:
+  `Sales Automation/scripts/coex/`; full picture in `meta-tech-provider.md` §Coexistence.
 - **Deploy order:** DB block **before** the router, because the join fails every message without
   the table. Then the webhook, the router, and the dashboard flag + env pair last.
 - **Dashboard gate:** vertical `features.inboxTab` **and** both env vars (`inboxEnabled()`). Never

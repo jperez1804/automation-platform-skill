@@ -34,8 +34,8 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | Postgres tables, schema, queries, dedup, session storage, escalations | `references/postgres-schema.md` |
 | n8n workflows, router, wizards, mermaid diagram, message flow, error handler | `references/whatsapp-automation.md` |
 | The dashboard (Next.js, vertical config, tenant config, design tokens, auth, magic link) | `references/dashboard.md` |
-| Meta embedded signup, WABA, phone number registration, Tech Provider flow — **incl. the v4 migration (2026-10-07: config `1423827086618896`, `extras: { setup: {}, version: 'v4' }`) and why Coexistence doesn't work for Argentine numbers** | `references/meta-tech-provider.md` §Embedded Signup version, §Coexistence |
-| **Tech debt and dated re-checks** (e.g. Coexistence for Argentina on 2026-10-21) | `techdebt/README.md` |
+| Meta embedded signup, WABA, phone number registration, Tech Provider flow — **incl. the v4 migration (2026-10-07: config `1423827086618896`, `extras: { setup: {}, version: 'v4' }`) and Coexistence (app + API on one number: available in AR since 2026-10-13, `featureType` trigger, page button, backend `signup_type`, the echo → 12 h pause in the engine, what each new client needs)** | `references/meta-tech-provider.md` §Embedded Signup version, §Coexistence |
+| **Tech debt and dated re-checks** | `techdebt/README.md` |
 | Bot Argento branding, real-estate vertical, Spanish copy, current production state | `references/reference-instance.md` |
 | VPS, Hostinger, `ssh vps`, Traefik, per-tenant compose, deploy gotchas, MCP limitations — **incl. the 2026-09-09 all-tenant 404 outage (Traefik v3.0 vs Docker 29) and the post-reboot smoke rule** | `references/vps-deployment.md` |
 | Onboarding a new agency / new vertical — step-by-step | `references/new-vertical-playbook.md` |
