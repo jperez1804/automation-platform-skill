@@ -36,6 +36,7 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | The dashboard (Next.js, vertical config, tenant config, design tokens, auth, magic link) | `references/dashboard.md` |
 | Meta embedded signup, WABA, phone number registration, Tech Provider flow — **incl. the v4 migration (2026-10-07: config `1423827086618896`, `extras: { setup: {}, version: 'v4' }`) and Coexistence (app + API on one number: available in AR since 2026-10-13, `featureType` trigger, page button, backend `signup_type`, the echo → 12 h pause in the engine, what each new client needs)** | `references/meta-tech-provider.md` §Embedded Signup version, §Coexistence |
 | **Tech debt and dated re-checks** | `techdebt/README.md` |
+| **Personal-brand Instagram content** (Jonatan's own account: carousels, reels, hooks, lead magnets, `botargento.com.ar/recursos`, the accounts radar) | **Not here.** That is the separate skill `personal-brand-social-media` (`~/.claude/skills/personal-brand-social-media`); do not load this skill for it. |
 | Bot Argento branding, real-estate vertical, Spanish copy, current production state | `references/reference-instance.md` |
 | VPS, Hostinger, `ssh vps`, Traefik, per-tenant compose, deploy gotchas, MCP limitations — **incl. the 2026-09-09 all-tenant 404 outage (Traefik v3.0 vs Docker 29) and the post-reboot smoke rule** | `references/vps-deployment.md` |
 | Onboarding a new agency / new vertical — step-by-step | `references/new-vertical-playbook.md` |
