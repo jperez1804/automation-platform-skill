@@ -46,8 +46,10 @@ gh pr merge <N> --repo <owner/repo> --squash --delete-branch
    Uncommitted changes in the way → leave them alone and say so (no stash, no reset).
 2. If the repo has a `Release` workflow (`gh run list --repo <r> --branch main --limit 3`), wait for the
    run of the merge commit (`gh run watch <id> --exit-status`) and report its result and the image tag
-   it publishes (`ghcr.io/jperez1804/<image>:<full sha>`). A failed Release → report the failing step
-   and log tail; do not retry or fix it.
+   it publishes. Read the image name from the workflow (`grep -n "ghcr.io\|IMAGE" .github/workflows/release.yml`
+   in the clone, or `gh run view <id> --log | grep -m3 ghcr.io`); never infer it from the repo name
+   (botargento-central publishes `ghcr.io/jperez1804/central`). A failed Release → report the failing
+   step and log tail; do not retry or fix it.
 3. Report the merge commit (short and full SHA) and the CI run of `main` if it is still running.
 
 ## Report (always)
