@@ -31,6 +31,7 @@ This is a **reference**, not a procedure. Read the SKILL.md (this file) for the 
 | If the user asks about… | Read |
 |---|---|
 | The overall stack, what each repo does, how they fit together | `references/stack-overview.md` |
+| **Central** — the agency panel (`central.botargento.com.ar`): clients, billing, platform health monitor, Instagram via Zernio; agents, deploy rules, Zernio gotchas | `references/central.md`, then the repo's `docs/` |
 | Postgres tables, schema, queries, dedup, session storage, escalations | `references/postgres-schema.md` |
 | n8n workflows, router, wizards, mermaid diagram, message flow, error handler | `references/whatsapp-automation.md` |
 | The dashboard (Next.js, vertical config, tenant config, design tokens, auth, magic link) | `references/dashboard.md` |

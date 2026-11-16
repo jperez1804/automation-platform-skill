@@ -109,5 +109,5 @@ template). See `references/outbound-sales.md`.
 
 - **No CRM**, no calendar integration beyond the public Google Calendar booking link, no payment processing.
 - **No AI agent yet** in production wizards. `OPENAI_API_KEY` and `OPENAI_MODEL` are present in `variables.txt` but unused in v2 — current wizards are deterministic state machines. AI triage for "Otras Consultas" is on the roadmap.
-- **No shared central dashboard.** Each tenant has its own Docker container reading its own database. Agency-side aggregation across all tenants would be new work.
+- **No shared tenant dashboard.** Each tenant has its own Docker container reading its own database. Agency-side views (clients, billing, health of every container, Instagram) live in **Central** — see `references/central.md`.
 - **No mobile app.** All client-facing is WhatsApp + landing page.
