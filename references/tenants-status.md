@@ -17,7 +17,7 @@
 | Tenant | Vertical | Stage | Subdomains | Last update | Detail |
 |---|---|---|---|---|---|
 | `client1` | real-estate | **Live** (dashboard refresh 2026-06-01; **engine upgrades 2026-09-15**: post-handoff window, voice-note transcription, burst grouping, spoken answers to option lists — POC, first tenant with them; **two-way inbox 2026-09-18**, first inbound tenant with it; **media capture 2026-09-30** (second tenant, first on the engine router; verified same day with real media, 3/3; dashboard recreated onto `e354265` the same day so the thread shows it); **intake hardening 2026-09-30** (media acks, family cooldown, repeat ladder, silence path, prose → Otras Consultas, inventory-wizard anti-loop — parity with plec; smoke-tested the same day, prose-intent fix after it); **CRM-lite "Leads" 2026-09-25 — first tenant with it**; by 2026-09-27 also on ventas, plec and tasty, the WhatsApp reminder notice only on client1 and ventas) | `client1.botargento.com.ar` (n8n), `dashboard.client1.botargento.com.ar` | 2026-09-25 | See `reference-instance.md` + §Client1 CRM-lite + §Client1 engine upgrades + §Client1 dashboard refresh below |
-| `plec` | architecture | **Live** — Bot v2.5 (campaña Meta desde ~2026-07-20) · **endurecimiento conversacional 2026-09-16** (guarda de repetición, acuses de media, prefill del ad, anti-bucle en los 6 wizards) · **transcripción de audio 2026-09-25** (key de OpenAI propia) · **cooldown por familia + captura de media 2026-09-27 — primer y único tenant con captura** (audio + imágenes + documentos → `automation.media_assets`, 90 días, verificada end-to-end; `store_failed` visible en `verify`) · **media visible en el dashboard desde 2026-09-28** (PRs #44 + #45: foto, `<audio>` nativo con transcript, PDF; iOS 26 reproduce el ogg) · **CRM-lite visible desde 2026-09-26, aviso de recordatorio por WhatsApp desde 2026-09-28** (`v2-crm-reminders` `cfwQy0Caf9i7RHMb`, template `crm_reminder`/`es_AR` aprobado) · pendiente: landing page, aviso de privacidad a Plec | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-09-28 | See §Plec Arquitectos below; full log in `Plec Automation/docs/plec-arquitectos/infra-status.md` |
+| `plec` | architecture | **Live** — Bot v2.5 (campaña Meta desde ~2026-07-20) · **endurecimiento conversacional 2026-09-16** (guarda de repetición, acuses de media, prefill del ad, anti-bucle en los 6 wizards) · **transcripción de audio 2026-09-25** (key de OpenAI propia) · **cooldown por familia + captura de media 2026-09-27 — primer y único tenant con captura** (audio + imágenes + documentos → `automation.media_assets`, 90 días, verificada end-to-end; `store_failed` visible en `verify`) · **media visible en el dashboard desde 2026-09-28** (PRs #44 + #45: foto, `<audio>` nativo con transcript, PDF; iOS 26 reproduce el ogg) · **CRM-lite visible desde 2026-09-26, aviso de recordatorio por WhatsApp desde 2026-09-28** (`v2-crm-reminders` `cfwQy0Caf9i7RHMb`, template `crm_reminder`/`es_AR` aprobado) · **web nueva: Discovery desde 2026-11-17** (método Boatti / skill `prospect-discovery`; workspace preparado: `CLAUDE.md`, `TOOLING.md`, Firecrawl, Higgsfield, `discovery.md`; nada en VPS/Meta) · **arreglos rápidos en la web actual publicados 2026-11-18** · pendiente: aviso de privacidad a Plec | `plec.botargento.com.ar` (n8n), `dashboard.plec.botargento.com.ar` (dashboard) | 2026-11-18 | See §Plec Arquitectos below; full log in `Plec Automation/docs/plec-arquitectos/infra-status.md` |
 | `bot-argento-sales` | outbound-sales | **Live — CRM-lite ON since 2026-09-25 + reminder notice since 2026-09-26** (second tenant with the CRM; reply-opens-opportunity rules). Campaign 8 (inmobiliarias, wizard v3) active since 2026-09-07; campaign 11 (389 inmobiliarias CNO, mobiles) seeded and **paused** by decision 2026-09-26; campaign 13 = Jonatan's test. Inbox webhook synced to the engine build 2026-09-26 (opt-out + 24 h takeover expiry) | `ventas.botargento.com.ar` (n8n), `dashboard.ventas.botargento.com.ar` (dashboard) | 2026-09-26 | See §Bot Argento Sales below |
 | `artbox` | outbound-sales (factories) | **Containers provisioned** (n8n + Postgres up, `automation.*` + `outreach.*` applied; DNS + Meta creds pending) | `artbox.botargento.com.ar` (n8n, DNS pending) | 2026-07-02 | See §ArtBox below |
 | `tasty` | **outbound-wholesale** since 2026-09-27 (growshops; was outbound-sales) | **Live — CRM-lite ON since 2026-09-27** (empty board from `CRM_SINCE=2026-09-27T14:18:20-03:00`; Pack de apertura / Reposición; see §Tasty CRM). Campaign 5 `growshops-interior-2026-09` ACTIVE (493 recipients, cap 30/day, Mon–Fri 11–16); campaigns 3 (AMBA, 419) and 4 (test) done. 915 recipients, ~28 % reply, ~35 % of repliers reach Mauro. **Bot hardening 2026-09-11/28**: prospects' auto-responders muted (wording + ≤30 s timing; delayed-delivery blind spot), declines without "interés" → opt-out, regression suites in `scripts/sim/` (see `whatsapp-automation.md` §6b–§8) | `tasty.botargento.com.ar` (n8n), `dashboard.tasty.botargento.com.ar` | 2026-09-28 | Dashboard latest + acciones de campaña habilitadas 2026-09-04 (inbox apagado). Workspace: `C:\Desarollo\jperez\TastyLivingSoil\Tasty Automation\` — full log in its `docs/ventas/infra-status.md` (no per-tenant section here yet) |
@@ -242,6 +242,53 @@ Three sessions, all logged with rollback versionIds in
 - **Deployer:** `scripts/patch-plec-live.mjs` (`sender | persister-leadlog | persister-transcript | normalize | audio | media | session-query | router | wizard <n> | wizards | verify`; the `media` target converges on nodes, connections **and** parameters). Harness `scripts/test-*.mjs`, 1105 assertions, real `jsCode` under stubs; `runCodeAsync` for nodes that `await this.helpers.*`.
 - **CRM-lite** visible since 2026-09-26 (`CRM_ENABLED=1`, history imported: 25 opportunities / 21 people on 09-27). **Reminder notice installed 2026-09-28:** plec registered in the engine's `tenants.json` as `routerSource: "external"` (router id only to borrow the Postgres credential), `patch-tenant-live.mjs plec crm-reminders` created `cfwQy0Caf9i7RHMb` (active), `CRM_REMINDER_TEMPLATE_NAME=crm_reminder` / `_LANG=es_AR` in `.env` **and** the compose `environment:` block, container recreated (backups `*.bak-20260928161518`). Template approved on WABA `1473386571198969`, id `2073734073236244`, filed as MARKETING like ventas'. `verify plec`: 10/10 reminder checks. First real notice not yet observed (nothing was due at install time).
 
+### Updated 2026-11-17 — new website track (Discovery)
+
+- Jonatan asked for a **new proposal** for Plec: a new site + SEO with the Boatti method (`prospect-discovery`
+  skill, phases 0–11; `references/new-site.md` §Another vertical). The bot/CRM stay Live; this track is
+  Discovery, **nothing on the VPS or Meta**.
+- Workspace prepared in `Plec Automation/`: root `CLAUDE.md` (two tracks, site base, toolchain, open items,
+  rules), `TOOLING.md` (Firecrawl → Playwright → claude-in-chrome, costs), `.mcp.json` (Firecrawl via
+  `--env-file=.env`; key pasted by Jonatan), `package.json` with `@higgsfield/cli` 1.2.2,
+  `.claude/skills/higgsfield-*` + `skills-lock.json` copied from `mariela`, `docs/plec-arquitectos/discovery.md`
+  (data sheet prefilled from our own records), `landing/README.md`. No commits.
+- Impeccable and claude-seo were only installed with **project** scope (landing repo / `mariela`), so they
+  don't load here: Jonatan installs them at user scope.
+- Same day, phase 3 + audit A: Jonatan proposed the site himself; studio in **Canning**; current site
+  `plecarquitectos.ar` was **built by Jonatan** on the ThemeForest «Theratio» template (Bitbucket
+  `jperez1804/plec`), domain/DNS/hosting are his on **DonWeb** (NIC.ar, expires 2027-03-04) → nothing to
+  migrate. Site WhatsApp buttons go to the client's personal work number (not the bot; in
+  `handoff/contacts.md`). Findings: one real page, **67 template demo pages live** («Theratio»), no
+  robots/sitemap/h1/JSON-LD/analytics, `wa.me/+5411…` without the 9, 5.5 MB, Lighthouse mobile 56.
+  Audit B (claude-seo) running; incognito searches pending from Jonatan.
+- Same day, **quick fixes on the current site** authorized ("deploy"): there is no automated FTP deploy to
+  DonWeb for this site, so Claude edits the local repo and Jonatan uploads by hand (`docs/plec-arquitectos/arreglos-rapidos-2026-11-17.md`):
+  head/SEO + JSON-LD + `wa.me/549…` with prefill, `.htaccess` (https, no www, 410 for the demo pages),
+  robots + sitemap, 68 demo files removed locally. Live verification pending the upload. Instagram
+  `@plec.arquitectos`: 1,371 followers; its bio links to the **bot** number, the site to the personal one.
+- Audit B (claude-seo 2.6.2): **23/100**, reconciled with A in `seo-audit-2026-11-17.md` §Segunda opinión.
+  DonWeb's anti-bot ("One moment, please…", openresty) answers every URL after a request burst — keep live
+  checks light. Quick fixes adjusted before upload (description, `GeneralContractor`, security headers).
+- **2026-11-18 — quick fixes live.** Jonatan wiped the DonWeb server and uploaded the local folder by FTP (a 403
+  while `index.html` was still missing, gone once the upload finished). Live check passed: 200 with the new
+  head + JSON-LD + `wa.me/549…?text=`, security headers, 301 for http/www/`index.html`, 410 for the demo pages,
+  robots/sitemap 200, `.git` and `.htaccess` 403; WhatsApp button tested by Jonatan on his phone. Pending on the
+  current site: HSTS (Jonatan decides), GA4, heavy images and `<h1>` (visible). Same day: favicon made from
+  the logo's yellow «P» (local, Jonatan uploads 4 files); Search Console domain property **verified** (TXT in DonWeb's DNS).
+- Same day, **phases 4–5 closed, phase 6 started** with Jonatan's 13 incognito searches: 1st for the brand (Google
+  and Bing), **0 of 8** non-brand searches, **no Google Business Profile** (Maps sends the brand to PLEC Studio,
+  Barcelona). Google's AI names Jonatan as the director (footer credit) and shows the «Mensaje Clave» placeholder.
+  Competitors: SOUKAL (reference), Gimenez Familia (52 reviews, page per work), De Los Santos (page per service +
+  Google Ads); none has a bot. Docs: `seo-audit-2026-11-17.md` §Chequeo manual, `competencia/competidores-canning-2026-11-18.md`.
+- Same day, "advance with everything": SOUKAL audit **54/100** vs Plec 23; `diagnostico.md`, `plan-de-trabajo.md`,
+  `ficha-google-2026-11-18.md` (GBP kit), mystery-shopper script; current-site batch 2 done locally (footer credit,
+  placeholder, hidden `<h1>`, images 2 MB → 160 KB), Jonatan uploads 8 files. Learnings in `prospect-discovery`
+  (`references/case-plec.md`).
+- Client report v1 published (private): https://claude.ai/artifact/HP6qSQX7t2YSmuhi8FALd8 («Plec en números», no prices).
+  Same day: the meeting version as a slide deck (private): https://claude.ai/artifact/5SXURE1hUfmffepdjruoQW (19 slides,
+  4 parts, speaker notes; no calculator, no prices).
+- **Next:** Jonatan reviews/shares the report → Plec creates the GBP → meeting (phase 1) → reference survey (phase 10).
+
 ### Distribución actual del menú (post 2026-05-28)
 
 Total sub-opciones: **17**. T1 ⚡ ≈ 59% (Opción 1.* + 3.* + 4.*) · T2 ⭐ ≈ 24% (Opción 2.*) · T4 📋 ≈ 18% (Opción 5 + 6.*).
@@ -257,7 +304,7 @@ Total sub-opciones: **17**. T1 ⚡ ≈ 59% (Opción 1.* + 3.* + 4.*) · T2 ⭐ �
 7. ~~**Providers + labor_pool dashboard tabs**~~ — done 2026-05-20
 8. ~~**Handoff priority system**~~ — done 2026-05-23, re-balanceado 2026-05-27
 9. **Per-equipo data** — rotar los 7 `<TARGET>_WHATSAPP_NUMBER` y `ALERT_EMAIL_TO` de placeholder (`5491121911850` / `jonatanperez1804@gmail.com`) a los datos reales que confirme Plec.
-10. **Landing page clone** — Plec brand sobre `BotArgentoLandingPageRepo/landingpage`. No bloquea operación pero ayuda al onboarding orgánico de nuevos clientes.
+10. ~~**Landing page clone** — Plec brand sobre `BotArgentoLandingPageRepo/landingpage`. No bloquea operación pero ayuda al onboarding orgánico de nuevos clientes.~~ **Reemplazado 2026-11-17** por el track de web nueva (ver §Updated 2026-11-17 abajo).
 11. **Google Sheets OAuth → Service Account** (tech debt) — la app OAuth quedó *unverified*, no escala bien. Migrar a Service Account cuando Plec haga go-live agresivo.
 12. **`automation.v_architecture_*` views** (opcional) — solo si emergen métricas architecture-specific que las 7 views actuales no cubren.
 13. **Aviso de privacidad a Plec** (desde 2026-09-25): las notas de voz se transcriben en OpenAI y la media se guarda 90 días en `automation.media_assets`. Ahora que la tabla existe y se llena, es el momento.
