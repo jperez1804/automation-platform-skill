@@ -290,7 +290,10 @@ Three sessions, all logged with rollback versionIds in
 - **2026-11-23 — stage 1 started.** Batch 2 confirmed live; Search Console sitemap OK and the three coverage reasons
   (template pages, `404-error.html`, `index.html`) in validation. GA4 prepared in the local site repo with a
   placeholder ID (loads nothing until Jonatan sets it); `etapa-1-2026-11-23.md` lists what to ask Plec for the
-  Google Business Profile, reviews and the new site.
+  Google Business Profile, reviews and the new site. Same day: **Google Business Profile created** with Plec's account
+  (service area, no visible address; Jonatan administers it); photos, category and socials loaded, WhatsApp chat
+  link pending. GA4 live and verified (`contacto` event seen in Realtime); Bing Webmaster imported from Search Console.
+  Next: Plec's answers and first reviews; then Bing Places, directories, and the stage 2 reference survey.
 - **Next:** Jonatan reviews/shares the report → Plec creates the GBP → meeting (phase 1) → reference survey (phase 10).
 
 ### Distribución actual del menú (post 2026-05-28)
