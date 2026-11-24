@@ -287,6 +287,10 @@ Three sessions, all logged with rollback versionIds in
 - Client report v1 published (private): https://claude.ai/artifact/HP6qSQX7t2YSmuhi8FALd8 («Plec en números», no prices).
   Same day: the meeting version as a slide deck (private): https://claude.ai/artifact/5SXURE1hUfmffepdjruoQW (19 slides,
   4 parts, speaker notes; no calculator, no prices).
+- **2026-11-23 — stage 1 started.** Batch 2 confirmed live; Search Console sitemap OK and the three coverage reasons
+  (template pages, `404-error.html`, `index.html`) in validation. GA4 prepared in the local site repo with a
+  placeholder ID (loads nothing until Jonatan sets it); `etapa-1-2026-11-23.md` lists what to ask Plec for the
+  Google Business Profile, reviews and the new site.
 - **Next:** Jonatan reviews/shares the report → Plec creates the GBP → meeting (phase 1) → reference survey (phase 10).
 
 ### Distribución actual del menú (post 2026-05-28)
