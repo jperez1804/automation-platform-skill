@@ -25,6 +25,7 @@
 | `aurelioski` | rental (**nuevo vertical** · ski, Bariloche) | **Discovery — propuesta FINAL lista para enviar** (PDF; setup $0 · $100k/mes · 1er mes 50%; mockup = flujo real: menú numerado 4 opciones + wizard botones); bot INBOUND; dolor: volumen de consultas | `aurelioski.botargento.com.ar` (propuesto; sin infra) | 2026-08-19 | See §Aurelio Ski below |
 | `nuevoestilo` | **carrocería** (nuevo vertical `carroceria` · taller de chapa y pintura, Banfield) | **Discovery — RFP «Proyecto NEO» recibido 2026-10-11 (particulares + asegurados, 2 dispositivos, turnos, Instagram, coexistencia); propuesta v1 por fases 2026-10-13** (HTML + artifact; **precios en placeholder**; §5 = coexistencia disponible (verificada 2026-10-13 con el número de ventas) como camino principal en Fase 1, número nuevo como alternativa; Instagram vía ManyChat → WhatsApp; Arka fuera de las demos); bot INBOUND; pide demo con casos reales antes de contratar (Fase 0) | `nuevoestilo.botargento.com.ar` (propuesto; sin infra) | 2026-10-13 | See §Carrocería Nuevo Estilo below |
 | `miguelez` | real-estate (mismo vertical que `client1`) | **Discovery — EN CURSO** (primeras notas del cliente volcadas 2026-09-17: CRM **Lider PROP**, 2 líneas WA app (ventas / administración), ~10 consultas/día ventas; **menú fase 1 = 5 opciones** sin Emprendimientos ni wizard Propietarios; `propuesta.md` v1; **bloqueante: acceso a Lider PROP** (feed/API) + decisión sobre la línea de ventas; **nada en VPS**); bot INBOUND | `miguelez.botargento.com.ar` (propuesto; sin infra) | 2026-09-17 | See §Miguelez Propiedades below |
+| `mariela` | **salud** (centro médico multiespecialidad) | **Discovery — reunión hecha 2026-11-03** (Consultorios Médicos Boatti, Morón, 48–52 médicos, ~4.000 turnos/mes, ~150 msgs/día, 20 % ausentismo, BlipDoc como agenda). El número estuvo **en revisión** 26/10–~3/11 por envío manual masivo del recordatorio con links (no WhatsAuto); activo de nuevo. **Decidido:** auditoría SEO (hecha 2026-11-04; segunda opinión con plugin claude-seo, 38/100; competencia 2026-11-05: CEPEM 49/100, bot web Klini, 1.900 opiniones), web nueva con botón WhatsApp + SEO → **construida 2026-11-05** (Astro, 42 páginas, demo noindex en `botargento.com.ar/boatti/`; hero con efectos: home `/` con película por scroll + ECG, `/index2/` nítido con loop + partículas sin película ni scroll; **deployado 2026-11-06** vía `landing-deployer`, 50 archivos, smoke test OK; pendiente mostrar a Mariela). **Decidido 2026-11-06: camino 1** (atención al paciente sobre BlipDoc; el 2 queda como opción futura); reporte v20 con pestaña «Cómo seguimos». **Nada en VPS ni Meta** | `mariela.botargento.com.ar` (slug provisorio; sin infra) | 2026-11-06 | See §Mariela (centro de salud) below |
 
 ## Client1 engine upgrades — 2026-09-15 / 16
 
@@ -1092,3 +1093,96 @@ derivación humana** y **turnos y recordatorios**. Pide propuesta **por etapas**
   el cron del resumen/recordatorios. §5 ahora presenta la coexistencia como «funcionalidad muy reciente de
   Meta», sin fecha ni mención a nuestro número. Pendiente: que el cliente elija modo A/B y minutos de
   respaldo.
+
+## Mariela (centro de salud)
+
+**Stage:** Discovery, reunión hecha 2026-11-03 — **Consultorios Médicos Boatti** (Morón, centro médico
+multiespecialidad sin internación, dueño = padre de Mariela, cardiólogo). Vertical **`salud`**. Bot **inbound** presumido (respuestas 24/7,
+turnos) + add-on **outbound** probable (campaña a pacientes que no vuelven). Llegó por WhatsApp el
+2026-10-26 («de internet») porque **WhatsApp le bloqueó el número del centro por usar WhatsAuto**
+(auto-responder no oficial); aviso de 24 h, el 2026-10-27 a la mañana seguía bloqueado. No tenía
+notificaciones a números nuevos configuradas. **Nada en VPS ni Meta.**
+
+**Workspace:** `C:\Desarollo\jperez\mariela\` (`CLAUDE.md` en la raíz; scaffold estándar en
+`Clinica Automation\`, docs en `docs/mariela/`; renombrar cuando se sepa el nombre del centro).
+
+### Confirmed at session 2026-10-27 (scaffold + guía de relevamiento)
+
+- ✅ Workspace scaffoldeado (convención estándar, `.gitignore` patrón Nuevo Estilo, engine dirs = README).
+- ✅ `CLAUDE.md` (raíz): contexto, timeline, layout, ítems abiertos, reglas.
+- ✅ `docs/mariela/chat-2026-10-26.md` — chat curado (tabla de hechos). Los **3 audios de Mariela no
+  están en el export** → preguntar a Jonatan.
+- ✅ `docs/mariela/discovery.md` — patrón Miguelez, 7 bloques (+ turnos y pacientes), prefilled del chat.
+- ✅ `docs/mariela/infra-status.md` — stage, riesgos (número bloqueado ≠ registrable; expectativa
+  WhatsAuto; turnos sin agenda; datos de salud), checklist Meta (sería el **primer signup real en v4**).
+- ✅ **Guía de reunión en Word** `docs/mariela/Mariela - Relevamiento inicial.docx` (español, generada
+  por `scripts/build-assessment.js` con `docx`): chequeos previos (audios, nombre, web/SEO, Google Maps,
+  Instagram, estado del bloqueo) → 7 bloques de preguntas con «por qué importa» (negocio, mensajes y
+  canales, turnos, pacientes que no vuelven, el bloqueo/WhatsAuto, presencia digital, decisión) → cierre
+  (24/7, panel, campaña, confirmación de turnos) → pasos posteriores. Las preguntas de Jonatan quedaron
+  textuales como base de cada bloque.
+- Ítems abiertos de Jonatan: web con SEO · Google Maps · mostrar el panel después · respuestas 24/7 ·
+  campaña a pacientes que no vienen.
+- **Follow-up:** reunión jueves **2026-10-29 9:30** (tentativa; alternativa viernes 31/10 después de las
+  17–18; Jonatan ofreció tardes del 27/28). Después: volcar en `discovery.md`, decidir vertical y número
+  (coexistencia vs nuevo), propuesta la semana del 2026-11-02 vía `tenant-onboarder`.
+
+### Confirmed at sessions 2026-11-03 / 2026-11-04 (reunión + diagnóstico + investigación)
+
+- ✅ Reunión hecha el 2026-11-03; respuestas tipeadas en el .docx → `docs/mariela/reunion-2026-11-03.md`
+  (datos clave: 48–52 médicos, 7 en recepción / 4 con WhatsApp, L–V 9–15 + un sábado c/15 días 9–13 por WhatsApp (≈32 h/sem), ~150 msgs/día,
+  ~4.000 turnos/mes, 20 % ausentismo, sin confirmación previa, sin opt-in, BlipDoc = agenda + portal).
+- ✅ **Corrección de causa:** el número no fue bloqueado por WhatsAuto; WhatsApp Business lo puso en
+  **«Cuenta en revisión»** (26/10) cuando las operadoras mandaron a mano, a muchos números, el recordatorio
+  de BlipDoc con dos links. Activo de nuevo al 2026-11-04. Texto del recordatorio en `handoff/`.
+- ✅ `docs/mariela/diagnostico.md` — cliente-facing, 7 dolores como Hoy/Oportunidad, sin precios.
+- ✅ `docs/mariela/blipdoc-research.md` — **sin API**; portal de pacientes activo; export Excel (Plan Full
+  $16.000/agenda/mes, plan personalizado para 10+ agendas); recordatorio email automático / WhatsApp manual.
+  Opciones de integración A–E (export diario + plantilla con links de BlipDoc es la viable).
+- ✅ `docs/mariela/seo-audit-2026-11-04.md` — web = Engeni Landkit en S3/CloudFront, DNS Cloudflare, una
+  página, 4 h1, robots/sitemap 403, WhatsApp como `<button>` sin link, JSON-LD incompleto; el portal de
+  BlipDoc rankea antes que la web. Se rehace, no se migra. 18 créditos Firecrawl en total.
+- ✅ `docs/mariela/plan-de-trabajo.md` — **decidido:** auditoría (hecha), web nueva (clon del template de la
+  landing BotArgento, páginas por especialidad, sección «Nuevas especialidades», `wa.me` real, JSON-LD
+  `MedicalClinic`/`Physician`) y SEO. **En evaluación (Jonatan):** camino 1 (CRM de atención sobre
+  BlipDoc) vs 2 (súper CRM). **Abierto:** hosting de la web (dominio propio vs nuestro: preguntar si el
+  dominio es del centro o de Engeni).
+- Tooling en el workspace: `TOOLING.md`, `.mcp.json` con Firecrawl (key en `.env`), Playwright user-level.
+- **Follow-up:** pedir a Mariela export Excel de turnos de un día + base de pacientes, dueño del dominio,
+  CUIT/quién firma, valor de consulta, logo/fotos/nuevas especialidades. Decidir camino CRM y hosting →
+  propuesta vía `tenant-onboarder`. Revisar ficha de Google Maps a mano.
+
+### Session 2026-11-04 (noche): segunda opinión SEO
+
+- ✅ Auditoría con el plugin claude-seo 2.5.0 (9 agentes, sin Firecrawl): `docs/mariela/consultoriosmedicos-boatti.com-audit/`, salud SEO **38/100**.
+  Nuevos hallazgos: botón de WhatsApp precarga «…página web de Cleepo…» (default de Landkit), sin link a BlipDoc, sin médicos nombrados,
+  LCP móvil 4,4–4,6 s (lab). Corrección: **sin GA4**. Reporte de Mariela (Artifact) republicado, versión 2.
+- **Follow-up:** pedir a Engeni el arreglo de «Cleepo» + link a BlipDoc; crear GA4; verificar a mano en google.com.ar quién sale primero
+  por marca (las dos auditorías no coinciden). Lo demás sigue igual: camino CRM y hosting → propuesta vía `tenant-onboarder`.
+- **2026-11-04 (noche, después):** búsqueda manual confirma BlipDoc 1º / web 2º por marca; ficha de Google 4,3 ★ con 147 opiniones y **aparentemente sin reclamar**. Engeni: pago mensual, edita a pedido por WhatsApp, **dominio registrado por Engeni** (GoDaddy, vence 2027-09-23; DNS en GoDaddy, no Cloudflare). Hosting: recomendado arrancar en hosting propio (opción b) y pedir la transferencia en paralelo; decide Jonatan. Reporte v3.
+- **2026-11-04 (Bing):** web 1º en Bing; ficha local de Bing con nombre equivocado «MEDICAL CLINICS Boatti» → corregir vía Bing Places (importar desde GBP una vez reclamada). **Next action 2026-11-05:** Jonatan manda a Mariela el mensaje (mensualidad Engeni, arreglos Cleepo + link BlipDoc, quién administra la ficha de Google).
+- **2026-11-05:** reporte de Mariela v5 con explicación de SEO y resumen de la segunda auditoría. Falta compartirlo (Share → cualquiera con el link) antes de mandarle el mensaje.
+
+### Session 2026-11-05 (noche): sitio nuevo construido + demo publicada
+
+- ✅ Referencias de diseño (`docs/mariela/referencias-sitio-2026-11-05.md`): motionsites.ai no sirve (prompts, solo dental); getlayers.ai **Dantora** es la única clínica. **No se compró:** Jonatan pidió rehacer el diseño desde cero.
+- ✅ **Sitio Astro estático en `Clinica Automation/landing/`** (41 páginas: home, 28 especialidades + 4 estudios con textos propios en `src/data/especialidades.json`, obras sociales, turnos, nosotros, contacto, legales 25.326, 404). JSON-LD `MedicalClinic` + `MedicalWebPage` + breadcrumbs. Lighthouse móvil 94–100 / 100 / 100 / SEO 100 en producción. Imágenes Higgsfield (~107 créditos; prompts en `landing/assets/prompts.md`); médicos = placeholders hasta tener consentimiento.
+- ✅ **Demo en https://botargento.com.ar/boatti/** por el deploy FTPS de la landing de Bot Argento (`boatti` en `SITE_DIRS`, `.htaccess` raíz con `X-Robots-Tag: noindex` + DEFLATE, `.htaccess` de carpeta con 404 propia). Noindex por meta y cabecera, fuera del sitemap, sin links desde la landing. Las 4 ediciones sin commitear de Jonatan en la landing se stashearon durante el deploy y se restauraron; nada se commiteó en ese repo.
+### Session 2026-11-06: hero con efectos (solo local)
+
+- ✅ Hero «espectacular» (clave de venta de Jonatan): partículas de tinta que siguen el cursor, película por scroll (Kling 15 s), ECG en vivo; loop del latido de Kling reemplaza al de Seedance. Arreglo en celular (película solo desktop). Variante `/index2/` con la tinta de fondo y el titular encima, sin ECG; tras la grabación de Jonatan: intro al cargar (la tinta se junta sola en ~3 s) y el scroll la disuelve.
+- ⏳ **Pendiente (prompt entregado):** Jonatan no quiere que el scroll disuelva nada: index2 debe quedar con la intro y después el estetoscopio formado con el latido y las partículas, sin hero fijo ni scrub. Modo `intro` en `hero-fx.ts`; home `/` sin cambios.
+- **Sin deploy:** la demo en línea sigue con el build del 2026-11-05 23:55; todo lo nuevo está staged en `landingpage/boatti/`. Higgsfield: **145 créditos** gastados (865 quedan). Se prueba con `node scripts/serve-demo.mjs` → `http://127.0.0.1:4321/boatti/index2/`.
+
+- **Next action:** Jonatan le muestra la demo a Mariela (link + capturas en `docs/mariela/img/sitio-demo/`); pedirle logo vectorial, fotos reales, médicos con consentimiento y matrícula, lista oficial de obras sociales, horario único, CUIT. Decidir camino CRM y dominio (a vs b) → propuesta vía `tenant-onboarder`. **Borrar `/boatti/` cuando salga el sitio real.**
+
+### Confirmed at session 2026-11-06 (deploy del hero)
+
+- ✅ **Deploy de `/boatti/` hecho el 2026-11-06** con el agente `landing-deployer` del repo de la landing (dry run y deploy idénticos: 50 archivos subidos, 0 borrados; smoke test OK; `/boatti/index2/` 200 con `X-Robots-Tag: noindex, nofollow`, referencia a `hero-loop.mp4` y ninguna a `hero-film.mp4`). Home `/boatti/` = hero con película por scroll + ECG (`form`); `/boatti/index2/` = estetoscopio nítido desde el primer cuadro con loop + partículas, sin película ni scroll. `hero-film.mp4` sigue subido porque la home lo usa.
+- Minutos después DonWeb volvió a servir «One moment, please…» a la IP de Jonatan (throttle anti-bot, igual que el 2026-11-05); no es problema del deploy.
+- Siguen sin commitear en el repo de la landing: `scripts/deploy.mjs`, `.htaccess`, `index.html`, `privacy.html`, `terms.html`, `data-deletion.html`; `boatti/` sin trackear (a propósito).
+- ✅ **Export real de BlipDoc recibido (2026-11-06):** Listado Diario de Turnos del lunes 16/11, 150 turnos, 11 agendas (en `handoff/`). Trae celular, obra social, profesional y hora; **sin link de confirmación ni id de turno**. Opción B descartada con el export actual → camino 1 con opción A (plantilla con botones, confirmación en el panel, recepción marca en BlipDoc) y pedir a BlipDoc la columna del link. Mariela confirmó que recepción puede marcar el turno confirmado a mano en BlipDoc: la opción A cierra.
+- ✅ **Camino 1 elegido (2026-11-06).** Evaluación y etapas en `plan-de-trabajo.md` §Decidido; versión cliente en la pestaña «Cómo seguimos» del reporte (v20). Camino 2 solo si BlipDoc frena (sin link/webhook, portal con DNI, agenda como cuello de botella).
+- 2026-11-06 (tarde): la home del sitio nuevo pasa a ser la versión «espectacular» (ex `/index2/`); la anterior queda en `/indexold/` con noindex. **Deployado el 2026-11-06 (tarde)**: `/boatti/` = home nueva, `/boatti/indexold/` = anterior, `index2` borrado (carpeta vacía da 403). Reporte v25 con «La web y Google» como primera etapa.
+- ✅ **Precios definidos (2026-11-09):** desarrollo USD 1.200 (todas las etapas + hosting 1 año; 50/50), mantenimiento $200.000 ARS/mes desde el fin de todas las etapas, primer mes gratis. Pestaña «Inversión» del reporte (v26).
+- **Next action:** mostrar demo + reporte a Mariela; decidir hosting; propuesta con precios vía `tenant-onboarder` (fase 1 = canal + bot + panel; fase 2 = confirmación de turnos).
