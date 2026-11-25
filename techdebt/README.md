@@ -8,3 +8,4 @@ One file per item: `YYYY-MM-DD-<slug>.md`, where the date is **when to look at i
 |---|---|---|
 | — | [Burst harness: 3 stale assertions](2026-10-07-burst-harness-stale-assertions.md) | Engine (ventas) |
 | — | [First real v4 signup not yet observed](2026-10-07-embedded-signup-v4-first-signup.md) | Meta onboarding |
+| — | [Central phase 3 Soporte postponed](2026-11-12-central-phase3-support.md) | Central |
